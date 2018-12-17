@@ -15,8 +15,8 @@ import (
 	"github.com/ltcsuite/ltcutil/gcs"
 	"github.com/ltcsuite/ltcutil/gcs/builder"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/lightninglabs/neutrino/cache"
-	"github.com/lightninglabs/neutrino/filterdb"
+	"github.com/ltcsuite/neutrino/cache"
+	"github.com/ltcsuite/neutrino/filterdb"
 )
 
 var (

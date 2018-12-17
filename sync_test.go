@@ -29,7 +29,7 @@ import (
 	"github.com/ltcsuite/ltcwallet/wallet/txauthor"
 	"github.com/ltcsuite/ltcwallet/walletdb"
 	_ "github.com/ltcsuite/ltcwallet/walletdb/bdb"
-	"github.com/lightninglabs/neutrino"
+	"github.com/ltcsuite/neutrino"
 )
 
 var (

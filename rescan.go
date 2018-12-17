@@ -19,7 +19,7 @@ import (
 	"github.com/ltcsuite/ltcutil/gcs"
 	"github.com/ltcsuite/ltcutil/gcs/builder"
 	"github.com/ltcsuite/ltcwallet/waddrmgr"
-	"github.com/lightninglabs/neutrino/headerfs"
+	"github.com/ltcsuite/neutrino/headerfs"
 )
 
 var (

@@ -19,10 +19,10 @@ import (
 	"github.com/ltcsuite/ltcutil"
 	"github.com/ltcsuite/ltcutil/gcs"
 	"github.com/ltcsuite/ltcutil/gcs/builder"
-	"github.com/lightninglabs/neutrino/cache"
-	"github.com/lightninglabs/neutrino/cache/lru"
-	"github.com/lightninglabs/neutrino/filterdb"
-	"github.com/lightninglabs/neutrino/headerfs"
+	"github.com/ltcsuite/neutrino/cache"
+	"github.com/ltcsuite/neutrino/cache/lru"
+	"github.com/ltcsuite/neutrino/filterdb"
+	"github.com/ltcsuite/neutrino/headerfs"
 )
 
 var (

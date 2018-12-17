@@ -22,9 +22,9 @@ import (
 	"github.com/ltcsuite/ltcutil"
 	"github.com/ltcsuite/ltcwallet/waddrmgr"
 	"github.com/ltcsuite/ltcwallet/walletdb"
-	"github.com/lightninglabs/neutrino/cache/lru"
-	"github.com/lightninglabs/neutrino/filterdb"
-	"github.com/lightninglabs/neutrino/headerfs"
+	"github.com/ltcsuite/neutrino/cache/lru"
+	"github.com/ltcsuite/neutrino/filterdb"
+	"github.com/ltcsuite/neutrino/headerfs"
 )
 
 // These are exported variables so they can be changed by users.

@@ -20,8 +20,8 @@ import (
 	"github.com/ltcsuite/ltcutil"
 	"github.com/ltcsuite/ltcutil/gcs"
 	"github.com/ltcsuite/ltcutil/gcs/builder"
-	"github.com/lightninglabs/neutrino/headerfs"
-	"github.com/lightninglabs/neutrino/headerlist"
+	"github.com/ltcsuite/neutrino/headerfs"
+	"github.com/ltcsuite/neutrino/headerlist"
 )
 
 const (
