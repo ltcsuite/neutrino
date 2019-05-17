@@ -210,7 +210,7 @@ func NewBlockHeaderStore(filePath string, db walletdb.DB,
 	// Otherwise, we'll need to truncate the file until it matches the
 	// current index tip.
 	for fileHeight > tipHeight {
-		if bhs.singleTruncate(); err != nil {
+		if err := bhs.singleTruncate(); err != nil {
 			return nil, err
 		}
 
@@ -681,7 +681,7 @@ func NewFilterHeaderStore(filePath string, db walletdb.DB,
 	// Otherwise, we'll need to truncate the file until it matches the
 	// current index tip.
 	for fileHeight > tipHeight {
-		if fhs.singleTruncate(); err != nil {
+		if err := fhs.singleTruncate(); err != nil {
 			return nil, err
 		}
 
@@ -715,6 +715,31 @@ func (f *FilterHeaderStore) FetchHeaderByHeight(height uint32) (*chainhash.Hash,
 	defer f.mtx.RUnlock()
 
 	return f.readHeader(height)
+}
+
+// FetchHeaderAncestors fetches the numHeaders filter headers that are the
+// ancestors of the target stop block hash. A total of numHeaders+1 headers will be
+// returned, as we'll walk back numHeaders distance to collect each header,
+// then return the final header specified by the stop hash. We'll also return
+// the starting height of the header range as well so callers can compute the
+// height of each header without knowing the height of the stop hash.
+func (f *FilterHeaderStore) FetchHeaderAncestors(numHeaders uint32,
+	stopHash *chainhash.Hash) ([]chainhash.Hash, uint32, error) {
+
+	// First, we'll find the final header in the range, this will be the
+	// ending height of our scan.
+	endHeight, err := f.heightFromHash(stopHash)
+	if err != nil {
+		return nil, 0, err
+	}
+	startHeight := endHeight - numHeaders
+
+	headers, err := f.readHeaderRange(startHeight, endHeight)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return headers, startHeight, nil
 }
 
 // FilterHeader represents a filter header (basic or extended). The filter
