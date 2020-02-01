@@ -2873,8 +2873,13 @@ func (b *blockManager) calcNextRequiredDifficulty(newBlockTime time.Time,
 
 	// Get the block node at the previous retarget (targetTimespan days
 	// worth of blocks).
+	firstBlockNum := uint32(lastNode.Height + 1 - b.blocksPerRetarget)
+	// litecoin specific: range is 1 greater for all but the first retarget
+	if firstBlockNum != 0 {
+		firstBlockNum -= 1
+	}
 	firstNode, err := b.cfg.BlockHeaders.FetchHeaderByHeight(
-		uint32(lastNode.Height + 1 - b.blocksPerRetarget),
+		firstBlockNum,
 	)
 	if err != nil {
 		return 0, err
