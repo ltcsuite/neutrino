@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/btcsuite/btcwallet/walletdb"
-	_ "github.com/btcsuite/btcwallet/walletdb/bdb"
-	"github.com/lightninglabs/neutrino/banman"
+	"github.com/ltcsuite/ltcwallet/walletdb"
+	_ "github.com/ltcsuite/ltcwallet/walletdb/bdb"
+	"github.com/ltcsuite/neutrino/banman"
 )
 
 // createTestBanStore creates a test Store backed by a boltdb instance.

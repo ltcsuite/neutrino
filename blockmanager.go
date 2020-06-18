@@ -12,20 +12,20 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/btcsuite/btcd/blockchain"
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/txscript"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcutil/gcs"
-	"github.com/btcsuite/btcutil/gcs/builder"
-	"github.com/lightninglabs/neutrino/banman"
-	"github.com/lightninglabs/neutrino/blockntfns"
-	"github.com/lightninglabs/neutrino/chainsync"
-	"github.com/lightninglabs/neutrino/headerfs"
-	"github.com/lightninglabs/neutrino/headerlist"
-	"github.com/lightninglabs/neutrino/query"
+	"github.com/ltcsuite/ltcd/blockchain"
+	"github.com/ltcsuite/ltcd/chaincfg"
+	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
+	"github.com/ltcsuite/ltcd/txscript"
+	"github.com/ltcsuite/ltcd/wire"
+	"github.com/ltcsuite/ltcutil"
+	"github.com/ltcsuite/ltcutil/gcs"
+	"github.com/ltcsuite/ltcutil/gcs/builder"
+	"github.com/ltcsuite/neutrino/banman"
+	"github.com/ltcsuite/neutrino/blockntfns"
+	"github.com/ltcsuite/neutrino/chainsync"
+	"github.com/ltcsuite/neutrino/headerfs"
+	"github.com/ltcsuite/neutrino/headerlist"
+	"github.com/ltcsuite/neutrino/query"
 )
 
 const (
@@ -95,7 +95,7 @@ type donePeerMsg struct {
 // txMsg packages a bitcoin tx message and the peer it came from together
 // so the block handler has access to that information.
 type txMsg struct {
-	tx   *btcutil.Tx
+	tx   *ltcutil.Tx
 	peer *ServerPeer
 }
 
@@ -124,7 +124,7 @@ type blockManagerCfg struct {
 	BanPeer func(addr string, reason banman.Reason) error
 
 	// GetBlock fetches a block from the p2p network.
-	GetBlock func(chainhash.Hash, ...QueryOption) (*btcutil.Block, error)
+	GetBlock func(chainhash.Hash, ...QueryOption) (*ltcutil.Block, error)
 
 	// firstPeerSignal is a channel that's sent upon once the main daemon
 	// has made its first peer connection. We use this to ensure we don't
@@ -2805,7 +2805,7 @@ func (b *blockManager) checkHeaderSanity(blockHeader *wire.BlockHeader,
 	if err != nil {
 		return err
 	}
-	stubBlock := btcutil.NewBlock(&wire.MsgBlock{
+	stubBlock := ltcutil.NewBlock(&wire.MsgBlock{
 		Header: *blockHeader,
 	})
 	err = blockchain.CheckProofOfWork(stubBlock,
@@ -2873,8 +2873,13 @@ func (b *blockManager) calcNextRequiredDifficulty(newBlockTime time.Time,
 
 	// Get the block node at the previous retarget (targetTimespan days
 	// worth of blocks).
+	firstBlockNum := uint32(lastNode.Height + 1 - b.blocksPerRetarget)
+	// litecoin specific: range is 1 greater for all but the first retarget
+	if firstBlockNum != 0 {
+		firstBlockNum -= 1
+	}
 	firstNode, err := b.cfg.BlockHeaders.FetchHeaderByHeight(
-		uint32(lastNode.Height + 1 - b.blocksPerRetarget),
+		firstBlockNum,
 	)
 	if err != nil {
 		return 0, err

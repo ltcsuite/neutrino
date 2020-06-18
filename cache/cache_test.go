@@ -4,13 +4,13 @@ import (
 	"crypto/rand"
 	"testing"
 
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcutil/gcs"
-	"github.com/lightninglabs/neutrino/cache"
-	"github.com/lightninglabs/neutrino/cache/lru"
-	"github.com/lightninglabs/neutrino/filterdb"
+	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
+	"github.com/ltcsuite/ltcd/wire"
+	"github.com/ltcsuite/ltcutil"
+	"github.com/ltcsuite/ltcutil/gcs"
+	"github.com/ltcsuite/neutrino/cache"
+	"github.com/ltcsuite/neutrino/cache/lru"
+	"github.com/ltcsuite/neutrino/filterdb"
 )
 
 // TestBlockFilterCaches tests that we can put and retrieve elements from all
@@ -36,7 +36,7 @@ func TestBlockFilterCaches(t *testing.T) {
 	var (
 		blockHashes []chainhash.Hash
 		filters     []*gcs.Filter
-		blocks      []*btcutil.Block
+		blocks      []*ltcutil.Block
 	)
 	for i := 0; i < numElements; i++ {
 		var blockHash chainhash.Hash
@@ -61,7 +61,7 @@ func TestBlockFilterCaches(t *testing.T) {
 		}
 
 		msgBlock := &wire.MsgBlock{}
-		block := btcutil.NewBlock(msgBlock)
+		block := ltcutil.NewBlock(msgBlock)
 		blocks = append(blocks, block)
 
 		// Add the block to the block caches, using the block INV

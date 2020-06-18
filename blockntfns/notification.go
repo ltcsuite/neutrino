@@ -3,7 +3,7 @@ package blockntfns
 import (
 	"fmt"
 
-	"github.com/btcsuite/btcd/wire"
+	"github.com/ltcsuite/ltcd/wire"
 )
 
 // BlockNtfn is an interface that coalesces all the different types of block

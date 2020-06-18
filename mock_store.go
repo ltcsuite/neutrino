@@ -3,17 +3,16 @@ package neutrino
 import (
 	"fmt"
 
-	"github.com/btcsuite/btcd/blockchain"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/lightninglabs/neutrino/headerfs"
+	"github.com/ltcsuite/ltcd/blockchain"
+	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
+	"github.com/ltcsuite/ltcd/wire"
+	"github.com/ltcsuite/neutrino/headerfs"
 )
 
 // mockBlockHeaderStore is an implementation of the BlockHeaderStore backed by
 // a simple map.
 type mockBlockHeaderStore struct {
 	headers map[chainhash.Hash]wire.BlockHeader
-	heights map[uint32]wire.BlockHeader
 }
 
 // A compile-time check to ensure the mockBlockHeaderStore adheres to the
@@ -24,10 +23,9 @@ var _ headerfs.BlockHeaderStore = (*mockBlockHeaderStore)(nil)
 // backed by an in-memory map. This instance is meant to be used by callers
 // outside the package to unit test components that require a BlockHeaderStore
 // interface.
-func newMockBlockHeaderStore() *mockBlockHeaderStore {
+func newMockBlockHeaderStore() headerfs.BlockHeaderStore {
 	return &mockBlockHeaderStore{
 		headers: make(map[chainhash.Hash]wire.BlockHeader),
-		heights: make(map[uint32]wire.BlockHeader),
 	}
 }
 
@@ -40,17 +38,11 @@ func (m *mockBlockHeaderStore) LatestBlockLocator() (
 	blockchain.BlockLocator, error) {
 	return nil, nil
 }
-
 func (m *mockBlockHeaderStore) FetchHeaderByHeight(height uint32) (
 	*wire.BlockHeader, error) {
 
-	if header, ok := m.heights[height]; ok {
-		return &header, nil
-	}
-
-	return nil, headerfs.ErrHeightNotFound
+	return nil, nil
 }
-
 func (m *mockBlockHeaderStore) FetchHeaderAncestors(uint32,
 	*chainhash.Hash) ([]wire.BlockHeader, uint32, error) {
 
