@@ -6,7 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/lightningnetwork/lnd/queue"
+	"github.com/ltcsuite/lnd/queue"
 )
 
 var (
