@@ -7,6 +7,7 @@ require (
 	github.com/ltcsuite/ltcd v0.22.0-beta
 	github.com/ltcsuite/ltcd/btcec/v2 v2.1.0
 	github.com/ltcsuite/ltcd/ltcutil v1.1.0
+	github.com/ltcsuite/ltcwallet/wallet/txauthor v1.1.0
 	github.com/ltcsuite/ltcwallet/walletdb v1.3.5
 	github.com/ltcsuite/ltcwallet/wtxmgr v1.5.0
 	github.com/stretchr/testify v1.7.0

@@ -25,6 +25,7 @@ import (
 	"github.com/ltcsuite/ltcd/rpcclient"
 	"github.com/ltcsuite/ltcd/txscript"
 	"github.com/ltcsuite/ltcd/wire"
+	"github.com/ltcsuite/ltcwallet/wallet/txauthor"
 	"github.com/ltcsuite/ltcwallet/walletdb"
 	_ "github.com/ltcsuite/ltcwallet/walletdb/bdb"
 	"github.com/ltcsuite/neutrino"
@@ -516,21 +517,20 @@ func testStartRescan(harness *neutrinoHarness, t *testing.T) {
 		Value:    500000000,
 	}
 	// Spend the first transaction and mine a block.
-	// disable test until txauthor is less annoying
-	// authTx1, err := txauthor.NewUnsignedTransaction(
-	// 	[]*wire.TxOut{
-	// 		&out3,
-	// 	},
-	// 	// Fee rate is satoshis per kilobyte
-	// 	1024000,
-	// 	inSrc(*tx1),
-	// 	&txauthor.ChangeSource{
-	// 		NewScript: func() ([]byte, error) {
-	// 			return script3, nil
-	// 		},
-	// 		ScriptSize: len(script3),
-	// 	},
-	// )
+	authTx1, err := txauthor.NewUnsignedTransaction(
+		[]*wire.TxOut{
+			&out3,
+		},
+		// Fee rate is satoshis per kilobyte
+		1024000,
+		inSrc(*tx1),
+		&txauthor.ChangeSource{
+			NewScript: func() ([]byte, error) {
+				return script3, nil
+			},
+			ScriptSize: len(script3),
+		},
+	)
 	if err != nil {
 		t.Fatalf("Couldn't create unsigned transaction: %s", err)
 	}
@@ -565,21 +565,20 @@ func testStartRescan(harness *neutrinoHarness, t *testing.T) {
 			" %d", numTXs)
 	}
 	// Spend the second transaction and mine a block.
-	// disable until txauthor is less annoying
-	// authTx2, err := txauthor.NewUnsignedTransaction(
-	// 	[]*wire.TxOut{
-	// 		&out3,
-	// 	},
-	// 	// Fee rate is satoshis per kilobyte
-	// 	1024000,
-	// 	inSrc(*tx2),
-	// 	&txauthor.ChangeSource{
-	// 		NewScript: func() ([]byte, error) {
-	// 			return script3, nil
-	// 		},
-	// 		ScriptSize: len(script3),
-	// 	},
-	// )
+	authTx2, err := txauthor.NewUnsignedTransaction(
+		[]*wire.TxOut{
+			&out3,
+		},
+		// Fee rate is satoshis per kilobyte
+		1024000,
+		inSrc(*tx2),
+		&txauthor.ChangeSource{
+			NewScript: func() ([]byte, error) {
+				return script3, nil
+			},
+			ScriptSize: len(script3),
+		},
+	)
 	if err != nil {
 		t.Fatalf("Couldn't create unsigned transaction: %s", err)
 	}
