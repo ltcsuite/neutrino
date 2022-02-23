@@ -2,7 +2,7 @@ package cache
 
 import (
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
-	"github.com/ltcsuite/ltcutil/gcs"
+	"github.com/ltcsuite/ltcd/ltcutil/gcs"
 	"github.com/ltcsuite/neutrino/filterdb"
 )
 

@@ -17,7 +17,7 @@ var ErrCheckpointMismatch = fmt.Errorf("checkpoint doesn't match")
 // expected filter headers.
 var filterHeaderCheckpoints = map[wire.BitcoinNet]map[uint32]*chainhash.Hash{
 	// Mainnet filter header checkpoints.
-	chaincfg.MainNetParams.Net: map[uint32]*chainhash.Hash{
+	chaincfg.MainNetParams.Net: {
 		50000:   hashFromStr("40ef276cc92c0edf323ee0be4cda6d72007846470329a150547947d52064841c"),
 		100000:  hashFromStr("16481d67008768cbbfde5a5a4440cb53cc7c6bf6fa7d619aafbcfaa4a708830e"),
 		150000:  hashFromStr("60f41c9a1e84590c14783413df2b4d865d4b09fee90ee50b48999a3877e8bc5f"),
@@ -40,10 +40,14 @@ var filterHeaderCheckpoints = map[wire.BitcoinNet]map[uint32]*chainhash.Hash{
 		1603000: hashFromStr("c9c115714f37e5e325effc9a386a5659844a5abfa6c25695fd591c4a61933b13"),
 		1701000: hashFromStr("f6bee45920a347c2b245a5c9796c20268c27bc7143c7c62ac0ac2cc9b5dcdace"),
 		1781000: hashFromStr("6d2505ff9d8ecaa573db0bb3aa34fc48986de30a39d29c3137333d753ae2b868"),
+		1865000: hashFromStr("ed28ca668aafad16b94dea78e2ed738dcfb64eedc2f49ccab670071c26d210ee"),
+		1999000: hashFromStr("01569255d7f6b3f1297b1b59538d443ac8f5a3e0dd8dcf48a4ca564f2e017ce1"),
+		2101000: hashFromStr("c52a617fe976ff7a1ddb282cf0d86f966ffe6f83c1d8f56fce115a1228ef59de"),
+		2215000: hashFromStr("da27b1459b1105d9e95f8709215a9e990d1a5f827b3f0603e8759a4b9915e3b6"),
 	},
 
 	// Testnet filter header checkpoints.
-	chaincfg.TestNet4Params.Net: map[uint32]*chainhash.Hash{
+	chaincfg.TestNet4Params.Net: {
 		10000:   hashFromStr("3b98491e48c3f89e6aba3466ab2f1ba802faef6e5ea92c7b0bcc20682ba44465"),
 		101000:  hashFromStr("8b54ceec6cde1f1b20e6ac2b28dcf3d72c51799760e625b156fca8b7c5c0a558"),
 		303000:  hashFromStr("3ff217c2f372bc3bb7273e085906183f8afac1858922c710e05d2f961357b21f"),

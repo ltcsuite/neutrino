@@ -13,13 +13,17 @@ import (
 )
 
 var (
-	// ErrBroadcastStopped is an error returned when we attempt to process a
-	// request to broadcast a transaction but the Broadcaster has already
+	// ErrBroadcasterStopped is an error returned when we attempt to process
+	// a request to broadcast a transaction but the Broadcaster has already
 	// been stopped.
 	ErrBroadcasterStopped = errors.New("broadcaster has been stopped")
 )
 
 const (
+	// DefaultBroadcastTimeout is the default timeout used when broadcasting
+	// transactions to network peers.
+	DefaultBroadcastTimeout = 5 * time.Second
+
 	// DefaultRebroadcastInterval is the default period that we'll wait
 	// between blocks to attempt another rebroadcast.
 	DefaultRebroadcastInterval = time.Minute
@@ -63,6 +67,10 @@ type Broadcaster struct {
 	// requests from external callers will be streamed through.
 	broadcastReqs chan *broadcastReq
 
+	// confChan is a channel used to notify the broadcast handler about
+	// confirmed transactions.
+	confChan chan chainhash.Hash
+
 	quit chan struct{}
 	wg   sync.WaitGroup
 }
@@ -72,6 +80,7 @@ func NewBroadcaster(cfg *Config) *Broadcaster {
 	b := &Broadcaster{
 		cfg:           *cfg,
 		broadcastReqs: make(chan *broadcastReq),
+		confChan:      make(chan chainhash.Hash),
 		quit:          make(chan struct{}),
 	}
 
@@ -81,11 +90,11 @@ func NewBroadcaster(cfg *Config) *Broadcaster {
 // Start starts all of the necessary steps for the Broadcaster to begin properly
 // carrying out its duties.
 func (b *Broadcaster) Start() error {
-	var err error
+	var returnErr error
 	b.start.Do(func() {
 		sub, err := b.cfg.SubscribeBlocks()
 		if err != nil {
-			err = fmt.Errorf("unable to subscribe for block "+
+			returnErr = fmt.Errorf("unable to subscribe for block "+
 				"notifications: %v", err)
 			return
 		}
@@ -93,7 +102,7 @@ func (b *Broadcaster) Start() error {
 		b.wg.Add(1)
 		go b.broadcastHandler(sub)
 	})
-	return err
+	return returnErr
 }
 
 // Stop halts the Broadcaster from rebroadcasting pending transactions.
@@ -118,10 +127,6 @@ func (b *Broadcaster) broadcastHandler(sub *blockntfns.Subscription) {
 	// transactions is the set of transactions we have broadcast so far,
 	// and are still not confirmed.
 	transactions := make(map[chainhash.Hash]*wire.MsgTx)
-
-	// confChan is a channel used to notify the broadcast handler about
-	// confirmed transactions.
-	confChan := make(chan chainhash.Hash)
 
 	// The rebroadcast semaphore is used to ensure we have only one
 	// rebroadcast running at a time.
@@ -153,7 +158,7 @@ func (b *Broadcaster) broadcastHandler(sub *blockntfns.Subscription) {
 		go func() {
 			defer b.wg.Done()
 
-			b.rebroadcast(txs, confChan)
+			b.rebroadcast(txs, b.confChan)
 			rebroadcastSem <- struct{}{}
 		}()
 
@@ -178,7 +183,7 @@ func (b *Broadcaster) broadcastHandler(sub *blockntfns.Subscription) {
 
 		// A tx was confirmed, and we can remove it from our set of
 		// transactions.
-		case txHash := <-confChan:
+		case txHash := <-b.confChan:
 			delete(transactions, txHash)
 
 		// A new block notification has arrived, so we'll rebroadcast
@@ -287,4 +292,10 @@ func (b *Broadcaster) Broadcast(tx *wire.MsgTx) error {
 	case <-b.quit:
 		return ErrBroadcasterStopped
 	}
+}
+
+// MarkAsConfirmed is used to tell the broadcaster that a transaction has been
+// confirmed and that it is no longer necessary to rebroadcast this transaction.
+func (b *Broadcaster) MarkAsConfirmed(txHash chainhash.Hash) {
+	b.confChan <- txHash
 }

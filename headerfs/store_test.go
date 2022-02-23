@@ -3,7 +3,6 @@ package headerfs
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/binary"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -27,7 +26,9 @@ func createTestBlockHeaderStore() (func(), walletdb.DB, string,
 	}
 
 	dbPath := filepath.Join(tempDir, "test.db")
-	db, err := walletdb.Create("bdb", dbPath, true)
+	db, err := walletdb.Create(
+		"bdb", dbPath, true, time.Second*10,
+	)
 	if err != nil {
 		return nil, nil, "", nil, err
 	}
@@ -230,7 +231,7 @@ func createTestFilterHeaderStore() (func(), walletdb.DB, string, *FilterHeaderSt
 	}
 
 	dbPath := filepath.Join(tempDir, "test.db")
-	db, err := walletdb.Create("bdb", dbPath, true)
+	db, err := walletdb.Create("bdb", dbPath, true, time.Second*10)
 	if err != nil {
 		return nil, nil, "", nil, err
 	}
@@ -285,10 +286,11 @@ func TestFilterHeaderStoreOperations(t *testing.T) {
 		rootBucket := tx.ReadWriteBucket(indexBucket)
 
 		for _, header := range blockHeaders {
-			var heightBytes [4]byte
-			binary.BigEndian.PutUint32(heightBytes[:], header.Height)
-			err := rootBucket.Put(header.HeaderHash[:], heightBytes[:])
-			if err != nil {
+			entry := headerEntry{
+				hash:   header.HeaderHash,
+				height: header.Height,
+			}
+			if err := putHeaderEntry(rootBucket, entry); err != nil {
 				return err
 			}
 		}
@@ -397,10 +399,11 @@ func TestFilterHeaderStoreRecovery(t *testing.T) {
 		rootBucket := tx.ReadWriteBucket(indexBucket)
 
 		for _, header := range blockHeaders {
-			var heightBytes [4]byte
-			binary.BigEndian.PutUint32(heightBytes[:], header.Height)
-			err := rootBucket.Put(header.HeaderHash[:], heightBytes[:])
-			if err != nil {
+			entry := headerEntry{
+				hash:   header.HeaderHash,
+				height: header.Height,
+			}
+			if err := putHeaderEntry(rootBucket, entry); err != nil {
 				return err
 			}
 		}
@@ -535,13 +538,11 @@ func TestFilterHeaderStateAssertion(t *testing.T) {
 			rootBucket := tx.ReadWriteBucket(indexBucket)
 
 			for _, header := range filterHeaderChain {
-				var heightBytes [4]byte
-				binary.BigEndian.PutUint32(
-					heightBytes[:], header.Height,
-				)
-				err := rootBucket.Put(
-					header.HeaderHash[:], heightBytes[:],
-				)
+				entry := headerEntry{
+					hash:   header.HeaderHash,
+					height: header.Height,
+				}
+				err := putHeaderEntry(rootBucket, entry)
 				if err != nil {
 					return err
 				}
@@ -598,6 +599,7 @@ func TestFilterHeaderStateAssertion(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
+		testCase := testCase
 		success := t.Run(testCase.name, func(t *testing.T) {
 			// We'll start the test by setting up our required
 			// dependencies.

@@ -27,7 +27,7 @@ type batchSpendReporter struct {
 	outpoints map[wire.OutPoint][]byte
 
 	// filterEntries holds the current set of watched outpoint, and is
-	// applied to cfilters to guage whether we should download the block.
+	// applied to cfilters to gauge whether we should download the block.
 	//
 	// NOTE: This watchlist is updated during each call to ProcessBlock.
 	filterEntries [][]byte
@@ -42,6 +42,17 @@ func newBatchSpendReporter() *batchSpendReporter {
 	}
 }
 
+// NotifyProgress notifies all requests with the last processed height.
+func (b *batchSpendReporter) NotifyProgress(blockHeight uint32) {
+	for _, requests := range b.requests {
+		for _, r := range requests {
+			if r.onProgress != nil {
+				r.onProgress(blockHeight)
+			}
+		}
+	}
+}
+
 // NotifyUnspentAndUnfound iterates through any requests for which no spends
 // were detected. If we were able to find the initial output, this will be
 // delivered signaling that no spend was detected. If the original output could
@@ -50,6 +61,8 @@ func (b *batchSpendReporter) NotifyUnspentAndUnfound() {
 	log.Debugf("Finished batch, %d unspent outpoints", len(b.requests))
 
 	for outpoint, requests := range b.requests {
+		op := outpoint
+
 		// A nil SpendReport indicates the output was not found.
 		tx, ok := b.initialTxns[outpoint]
 		if !ok {
@@ -57,7 +70,7 @@ func (b *batchSpendReporter) NotifyUnspentAndUnfound() {
 				outpoint)
 		}
 
-		b.notifyRequests(&outpoint, requests, tx, nil)
+		b.notifyRequests(&op, requests, tx, nil)
 	}
 }
 
@@ -67,7 +80,8 @@ func (b *batchSpendReporter) NotifyUnspentAndUnfound() {
 //     return reporter.FailRemaining(err)
 func (b *batchSpendReporter) FailRemaining(err error) error {
 	for outpoint, requests := range b.requests {
-		b.notifyRequests(&outpoint, requests, nil, err)
+		op := outpoint
+		b.notifyRequests(&op, requests, nil, err)
 	}
 	return err
 }
@@ -166,7 +180,7 @@ func (b *batchSpendReporter) findInitialTransactions(block *wire.MsgBlock,
 	// Iterate over the transactions in this block, hashing each and
 	// querying our reverse index to see if any requests depend on the txn.
 	initialTxns := make(map[wire.OutPoint]*SpendReport)
-	for _, tx := range block.Transactions {
+	for i, tx := range block.Transactions {
 		// If our reverse index has been cleared, we are done.
 		if len(txidReverseIndex) == 0 {
 			break
@@ -195,8 +209,13 @@ func (b *batchSpendReporter) findInitialTransactions(block *wire.MsgBlock,
 				continue
 			}
 
+			h := block.BlockHash()
+
 			initialTxns[op] = &SpendReport{
-				Output: txOuts[op.Index],
+				Output:      txOuts[op.Index],
+				BlockHash:   &h,
+				BlockHeight: height,
+				BlockIndex:  uint32(i),
 			}
 		}
 	}

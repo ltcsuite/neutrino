@@ -8,14 +8,15 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ltcsuite/ltcd/chaincfg"
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
+	"github.com/ltcsuite/ltcd/ltcutil/gcs"
+	"github.com/ltcsuite/ltcd/ltcutil/gcs/builder"
 	"github.com/ltcsuite/ltcd/peer"
 	"github.com/ltcsuite/ltcd/txscript"
 	"github.com/ltcsuite/ltcd/wire"
-	"github.com/ltcsuite/ltcutil/gcs"
-	"github.com/ltcsuite/ltcutil/gcs/builder"
 	"github.com/ltcsuite/ltcwallet/walletdb"
 	"github.com/ltcsuite/neutrino/banman"
 	"github.com/ltcsuite/neutrino/blockntfns"
@@ -23,11 +24,15 @@ import (
 	"github.com/ltcsuite/neutrino/query"
 )
 
-// maxHeight is the height we will generate filter headers up to. We use an odd
-// number of checkpoints to ensure we can test cases where the block manager is
-// only able to fetch filter headers for one checkpoint interval rather than
-// two.
-const maxHeight = 21 * uint32(wire.CFCheckptInterval)
+const (
+	// maxHeight is the height we will generate filter headers up to. We use an odd
+	// number of checkpoints to ensure we can test cases where the block manager is
+	// only able to fetch filter headers for one checkpoint interval rather than
+	// two.
+	maxHeight = 21 * uint32(wire.CFCheckptInterval)
+
+	dbOpenTimeout = time.Second * 10
+)
 
 // mockDispatcher implements the query.Dispatcher interface and allows us to
 // set up a custom Query method during tests.
@@ -55,7 +60,9 @@ func setupBlockManager() (*blockManager, headerfs.BlockHeaderStore,
 			"temporary directory: %s", err)
 	}
 
-	db, err := walletdb.Create("bdb", tempDir+"/weks.db", true)
+	db, err := walletdb.Create(
+		"bdb", tempDir+"/weks.db", true, dbOpenTimeout,
+	)
 	if err != nil {
 		os.RemoveAll(tempDir)
 		return nil, nil, nil, nil, fmt.Errorf("Error opening DB: %s",
@@ -113,7 +120,7 @@ type headers struct {
 // generateHeaders generates block headers, filter header and hashes, and
 // checkpoints from the given genesis. The onCheckpoint method will be called
 // with the current cf header on each checkpoint to modify the derivation of
-// the next interval
+// the next interval.
 func generateHeaders(genesisBlockHeader *wire.BlockHeader,
 	genesisFilterHeader *chainhash.Hash,
 	onCheckpoint func(*chainhash.Hash)) (*headers, error) {
@@ -437,8 +444,9 @@ func TestBlockManagerInitialInterval(t *testing.T) {
 			for i := startHeight; i <= maxHeight; i++ {
 				ntfn := <-bm.blockNtfnChan
 				if _, ok := ntfn.(*blockntfns.Connected); !ok {
-					t.Fatal("expected block connected " +
+					t.Error("expected block connected " +
 						"notification")
+					return
 				}
 			}
 		}()
@@ -538,6 +546,7 @@ func TestBlockManagerInvalidInterval(t *testing.T) {
 	}
 
 	for _, test := range testCases {
+		test := test
 		bm, hdrStore, cfStore, cleanUp, err := setupBlockManager()
 		if err != nil {
 			t.Fatalf("unable to set up ChainService: %v", err)
@@ -657,16 +666,18 @@ func TestBlockManagerInvalidInterval(t *testing.T) {
 					)
 					if i == test.firstInvalid {
 						if progress.Finished {
-							t.Fatalf("expected interval "+
+							t.Errorf("expected interval "+
 								"%d to be invalid", i)
+							return
 						}
 						errChan <- fmt.Errorf("invalid interval")
 						break
 					}
 
 					if !progress.Finished {
-						t.Fatalf("expected interval %d to be "+
+						t.Errorf("expected interval %d to be "+
 							"valid", i)
+						return
 					}
 				}
 
@@ -686,8 +697,9 @@ func TestBlockManagerInvalidInterval(t *testing.T) {
 			for i := startHeight; i <= maxHeight; i++ {
 				ntfn := <-bm.blockNtfnChan
 				if _, ok := ntfn.(*blockntfns.Connected); !ok {
-					t.Fatal("expected block connected " +
+					t.Error("expected block connected " +
 						"notification")
+					return
 				}
 			}
 		}()
@@ -782,7 +794,7 @@ func TestBlockManagerDetectBadPeers(t *testing.T) {
 
 		peers  = []string{"good1:1", "good2:1", "bad:1", "good3:1"}
 		expBad = map[string]struct{}{
-			"bad:1": struct{}{},
+			"bad:1": {},
 		}
 	)
 
@@ -868,7 +880,7 @@ func TestBlockManagerDetectBadPeers(t *testing.T) {
 		}
 
 		for i := uint32(0); i < 2*badIndex; i++ {
-			msg.AddCFHash(&filterHash)
+			_ = msg.AddCFHash(&filterHash)
 		}
 
 		headers := make(map[string]*wire.MsgCFHeaders)

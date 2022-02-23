@@ -5,8 +5,8 @@ import (
 
 	"github.com/ltcsuite/ltcd/chaincfg"
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
-	"github.com/ltcsuite/ltcutil/gcs"
-	"github.com/ltcsuite/ltcutil/gcs/builder"
+	"github.com/ltcsuite/ltcd/ltcutil/gcs"
+	"github.com/ltcsuite/ltcd/ltcutil/gcs/builder"
 	"github.com/ltcsuite/ltcwallet/walletdb"
 )
 
@@ -60,8 +60,6 @@ type FilterDatabase interface {
 // backed by boltdb.
 type FilterStore struct {
 	db walletdb.DB
-
-	chainParams chaincfg.Params
 }
 
 // A compile-time check to ensure the FilterStore adheres to the FilterDatabase

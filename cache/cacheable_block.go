@@ -1,6 +1,6 @@
 package cache
 
-import "github.com/ltcsuite/ltcutil"
+import "github.com/ltcsuite/ltcd/ltcutil"
 
 // CacheableBlock is a wrapper around the ltcutil.Block type which provides a
 // Size method used by the cache to target certain memory usage.

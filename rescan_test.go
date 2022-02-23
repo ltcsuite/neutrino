@@ -12,11 +12,11 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/ltcsuite/ltcd/chaincfg"
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
+	"github.com/ltcsuite/ltcd/ltcutil"
+	"github.com/ltcsuite/ltcd/ltcutil/gcs"
+	"github.com/ltcsuite/ltcd/ltcutil/gcs/builder"
 	"github.com/ltcsuite/ltcd/rpcclient"
 	"github.com/ltcsuite/ltcd/wire"
-	"github.com/ltcsuite/ltcutil"
-	"github.com/ltcsuite/ltcutil/gcs"
-	"github.com/ltcsuite/ltcutil/gcs/builder"
 	"github.com/ltcsuite/neutrino/blockntfns"
 	"github.com/ltcsuite/neutrino/headerfs"
 )
@@ -348,7 +348,7 @@ type rescanTestContext struct {
 
 // newRescanTestContext creates a new test harness for the Rescan struct backed
 // by a chain of numBlocks.
-func newRescanTestContext(t *testing.T, numBlocks int,
+func newRescanTestContext(t *testing.T, numBlocks int, // nolint:unparam
 	options ...RescanOption) *rescanTestContext {
 
 	blocksConnected := make(chan headerfs.BlockStamp)
@@ -393,7 +393,7 @@ func newRescanTestContext(t *testing.T, numBlocks int,
 }
 
 // start starts the backing rescan.
-func (ctx *rescanTestContext) start(waitUntilSynced bool) {
+func (ctx *rescanTestContext) start(waitUntilSynced bool) { // nolint:unparam
 	if !waitUntilSynced {
 		ctx.errChan = ctx.rescan.Start()
 		return

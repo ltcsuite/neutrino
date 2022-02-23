@@ -6,11 +6,12 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/ltcsuite/ltcd/chaincfg"
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
-	"github.com/ltcsuite/ltcutil/gcs"
-	"github.com/ltcsuite/ltcutil/gcs/builder"
+	"github.com/ltcsuite/ltcd/ltcutil/gcs"
+	"github.com/ltcsuite/ltcd/ltcutil/gcs/builder"
 	"github.com/ltcsuite/ltcwallet/walletdb"
 	_ "github.com/ltcsuite/ltcwallet/walletdb/bdb"
 )
@@ -21,7 +22,9 @@ func createTestDatabase() (func(), FilterDatabase, error) {
 		return nil, nil, err
 	}
 
-	db, err := walletdb.Create("bdb", tempDir+"/test.db", true)
+	db, err := walletdb.Create(
+		"bdb", tempDir+"/test.db", true, time.Second*10,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
