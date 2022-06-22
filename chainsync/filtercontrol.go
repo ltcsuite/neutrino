@@ -44,6 +44,7 @@ var filterHeaderCheckpoints = map[wire.BitcoinNet]map[uint32]*chainhash.Hash{
 		1999000: hashFromStr("01569255d7f6b3f1297b1b59538d443ac8f5a3e0dd8dcf48a4ca564f2e017ce1"),
 		2101000: hashFromStr("c52a617fe976ff7a1ddb282cf0d86f966ffe6f83c1d8f56fce115a1228ef59de"),
 		2215000: hashFromStr("da27b1459b1105d9e95f8709215a9e990d1a5f827b3f0603e8759a4b9915e3b6"),
+		2284583: hashFromStr("f46e91177160603dd6eb081e23cb49c9e247d55c9c538c0ff4cd8a6bbd702fe9"),
 	},
 
 	// Testnet filter header checkpoints.
@@ -57,6 +58,7 @@ var filterHeaderCheckpoints = map[wire.BitcoinNet]map[uint32]*chainhash.Hash{
 		1111000: hashFromStr("52a74833414ded5b7bdc7e274b0107569adcdb09cdd9f75bf25ad8793aac437c"),
 		1313000: hashFromStr("c81c0db37c5bcf27ba973215770a8a17630cb85db5035f898c94d1964b9b856a"),
 		1351000: hashFromStr("fd0d8cd62d0ce53ae003c5bd32db4943f330e4a1cc9ea09be6a34325085016e4"),
+		2408827: hashFromStr("8bd21a03b2e651a83bc94ba64da84ce5e4aac403e3cadc4ea1f89fff110cab12"),
 	},
 }
 
