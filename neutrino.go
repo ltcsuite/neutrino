@@ -15,6 +15,7 @@ import (
 
 	"github.com/ltcsuite/ltcd/addrmgr"
 	"github.com/ltcsuite/ltcd/blockchain"
+	"github.com/ltcsuite/ltcd/btcjson"
 	"github.com/ltcsuite/ltcd/chaincfg"
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
 	"github.com/ltcsuite/ltcd/connmgr"
@@ -275,15 +276,17 @@ func (sp *ServerPeer) OnInv(p *peer.Peer, msg *wire.MsgInv) {
 	newInv := wire.NewMsgInvSizeHint(uint(len(msg.InvList)))
 	for _, invVect := range msg.InvList {
 		if invVect.Type == wire.InvTypeTx {
-			log.Tracef("Ignoring tx %s in inv from %v -- "+
-				"SPV mode", invVect.Hash, sp)
-			if sp.ProtocolVersion() >= wire.BIP0037Version {
-				log.Infof("Peer %v is announcing "+
-					"transactions -- disconnecting", sp)
-				sp.Disconnect()
-				return
+			if sp.server.blocksOnly {
+				log.Tracef("Ignoring tx %s in inv from %v -- "+
+					"SPV mode", invVect.Hash, sp)
+				if sp.ProtocolVersion() >= wire.BIP0037Version {
+					log.Infof("Peer %v is announcing "+
+						"transactions -- disconnecting", sp)
+					sp.Disconnect()
+					return
+				}
+				continue
 			}
-			continue
 		}
 		err := newInv.AddInvVect(invVect)
 		if err != nil {
@@ -295,6 +298,17 @@ func (sp *ServerPeer) OnInv(p *peer.Peer, msg *wire.MsgInv) {
 	if len(newInv.InvList) > 0 {
 		sp.server.blockManager.QueueInv(newInv, sp)
 	}
+}
+
+// OnTx is invoked when a peer sends us a new transaction. We will pass it
+// into the blockmanager for further processing.
+func (sp *ServerPeer) OnTx(p *peer.Peer, msg *wire.MsgTx) {
+	if sp.server.blocksOnly {
+		log.Tracef("Ignoring tx %v from %v - blocksonly enabled",
+			msg.TxHash(), sp)
+		return
+	}
+	sp.server.blockManager.QueueTx(ltcutil.NewTx(msg), sp)
 }
 
 // OnHeaders is invoked when a peer receives a headers bitcoin
@@ -618,6 +632,13 @@ type Config struct {
 	//    not, replies with a getdata message.
 	// 3. Neutrino sends the raw transaction.
 	BroadcastTimeout time.Duration
+
+	// BlocksOnly sets whether or not to download unconfirmed transactions
+	// off the wire. If false the ChainService will send notifications when an
+	// unconfirmed transaction matches a watching address. The trade-off here is
+	// you're going to use a lot more bandwidth but it may be acceptable for apps
+	// which only run for brief periods of time.
+	BlocksOnly bool
 }
 
 // peerSubscription holds a peer subscription which we'll notify about any
@@ -678,6 +699,10 @@ type ChainService struct { // nolint:maligned
 	dialer       func(net.Addr) (net.Conn, error)
 
 	broadcastTimeout time.Duration
+
+	blocksOnly bool
+
+	mempool *Mempool
 }
 
 // NewChainService returns a new chain service configured to connect to the
@@ -737,6 +762,8 @@ func NewChainService(cfg Config) (*ChainService, error) {
 		dialer:            dialer,
 		persistToDisk:     cfg.PersistToDisk,
 		broadcastTimeout:  cfg.BroadcastTimeout,
+		blocksOnly:        cfg.BlocksOnly,
+		mempool:           NewMempool(),
 	}
 	s.workManager = query.NewWorkManager(&query.Config{
 		ConnectedPeers: s.ConnectedPeers,
@@ -809,6 +836,7 @@ func NewChainService(cfg Config) (*ChainService, error) {
 		GetBlock:         s.GetBlock,
 		firstPeerSignal:  s.firstPeerConnect,
 		queryAllPeers:    s.queryAllPeers,
+		mempool:          s.mempool,
 	})
 	if err != nil {
 		return nil, err
@@ -1131,6 +1159,18 @@ func (s *ChainService) AddBytesReceived(bytesReceived uint64) {
 func (s *ChainService) NetTotals() (uint64, uint64) {
 	return atomic.LoadUint64(&s.bytesReceived),
 		atomic.LoadUint64(&s.bytesSent)
+}
+
+// RegisterMempoolCallback registers a callback to be fired whenever a new transaction is
+// received into the mempool
+func (s *ChainService) RegisterMempoolCallback(onRecvTx func(tx *ltcutil.Tx, block *btcjson.BlockDetails)) {
+	s.mempool.RegisterCallback(onRecvTx)
+}
+
+// NotifyMempoolReceived registers addresses to receive a callback on when a transaction
+// paying to them enters the mempool.
+func (s *ChainService) NotifyMempoolReceived(addrs []ltcutil.Address) {
+	s.mempool.NotifyReceived(addrs)
 }
 
 // peerHandler is used to handle peer operations such as adding and removing
@@ -1489,6 +1529,7 @@ func NewPeerConfig(sp *ServerPeer) *peer.Config {
 			OnAddrV2:    sp.OnAddrV2,
 			OnRead:      sp.OnRead,
 			OnWrite:     sp.OnWrite,
+			OnTx:        sp.OnTx,
 
 			// Note: The reference client currently bans peers that send alerts
 			// not signed with its key.  We could verify against their key, but
@@ -1503,7 +1544,7 @@ func NewPeerConfig(sp *ServerPeer) *peer.Config {
 		ChainParams:      &sp.server.chainParams,
 		Services:         sp.server.services,
 		ProtocolVersion:  wire.AddrV2Version,
-		DisableRelayTx:   true,
+		DisableRelayTx:   sp.server.blocksOnly,
 	}
 }
 

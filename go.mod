@@ -28,6 +28,7 @@ require (
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	github.com/ltcsuite/lnd/clock v1.1.0 // indirect
 	github.com/ltcsuite/lnd/ticker v1.1.0 // indirect
+	github.com/ltcsuite/ltcwallet v0.13.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	go.etcd.io/bbolt v1.3.6 // indirect
 	golang.org/x/crypto v0.7.0 // indirect
@@ -39,6 +40,18 @@ require (
 go 1.18
 
 replace github.com/ltcsuite/neutrino/cache => ./cache
+
+replace github.com/ltcsuite/ltcd => ../ltcd
+
+replace github.com/ltcsuite/ltcd/btcec/v2 => ../ltcd/btcec
+
+replace github.com/ltcsuite/ltcd/chaincfg/chainhash => ../ltcd/chaincfg/chainhash
+
+replace github.com/ltcsuite/ltcd/ltcutil => ../ltcd/ltcutil
+
+replace github.com/ltcsuite/ltcwallet/walletdb => ../ltcwallet/walletdb
+
+replace github.com/ltcsuite/ltcwallet/wtxmgr => ../ltcwallet/wtxmgr
 
 replace github.com/ltcsuite/ltcwallet/wallet/txauthor => ../ltcwallet/wallet/txauthor
 
