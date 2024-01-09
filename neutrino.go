@@ -836,6 +836,7 @@ func NewChainService(cfg Config) (*ChainService, error) {
 		GetBlock:         s.GetBlock,
 		firstPeerSignal:  s.firstPeerConnect,
 		queryAllPeers:    s.queryAllPeers,
+		queryPeers:       s.queryPeers,
 		mempool:          s.mempool,
 	})
 	if err != nil {
@@ -1543,7 +1544,7 @@ func NewPeerConfig(sp *ServerPeer) *peer.Config {
 		UserAgentVersion: sp.server.userAgentVersion,
 		ChainParams:      &sp.server.chainParams,
 		Services:         sp.server.services,
-		ProtocolVersion:  wire.AddrV2Version,
+		ProtocolVersion:  wire.MwebLightClientVersion,
 		DisableRelayTx:   sp.server.blocksOnly,
 	}
 }

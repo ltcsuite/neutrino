@@ -117,6 +117,12 @@ type blockManagerCfg struct {
 			quit chan<- struct{}, peerQuit chan<- struct{}),
 		options ...QueryOption)
 
+	queryPeers func(
+		queryMsg wire.Message,
+		checkResponse func(sp *ServerPeer, resp wire.Message,
+			quit chan<- struct{}),
+		options ...QueryOption)
+
 	mempool *Mempool
 }
 
@@ -302,7 +308,7 @@ func (b *blockManager) Start() {
 	}
 
 	log.Trace("Starting block manager")
-	b.wg.Add(2)
+	b.wg.Add(3)
 	go b.blockHandler()
 	go func() {
 		defer b.wg.Done()
@@ -314,10 +320,12 @@ func (b *blockManager) Start() {
 		select {
 		case <-b.cfg.firstPeerSignal:
 		case <-b.quit:
+			b.wg.Done()
 			return
 		}
 
 		log.Debug("Peer connected, starting cfHandler.")
+		go b.mwebHandler()
 		b.cfHandler()
 	}()
 }
@@ -460,6 +468,78 @@ func (b *blockManager) handleDonePeerMsg(peers *list.List, sp *ServerPeer) {
 			Height: int32(height),
 		})
 		b.startSync(peers)
+	}
+}
+
+// mwebHandler is the mweb download handler for the block manager. It must be
+// run as a goroutine. It requests and processes mweb messages in a
+// separate goroutine from the peer handlers.
+func (b *blockManager) mwebHandler() {
+	defer b.wg.Done()
+	defer log.Trace("Mweb handler done")
+
+	b.newHeadersSignal.L.Lock()
+	for !b.BlockHeadersSynced() {
+		b.newHeadersSignal.Wait()
+
+		// While we're awake, we'll quickly check to see if we need to
+		// quit early.
+		select {
+		case <-b.quit:
+			b.newHeadersSignal.L.Unlock()
+			return
+		default:
+		}
+	}
+	b.newHeadersSignal.L.Unlock()
+
+	for {
+		// Now that the block headers are finished, we'll grab the current
+		// chain tip so we can base our mweb header sync off of that.
+		lastHeader, lastHeight, err := b.cfg.BlockHeaders.ChainTip()
+		if err != nil {
+			log.Critical(err)
+			return
+		}
+		lastHash := lastHeader.BlockHash()
+
+		log.Infof("Starting mweb sync at (block_height=%v, block_hash=%v)",
+			lastHeight, lastHeader.BlockHash())
+
+		gdmsg := wire.NewMsgGetData()
+		gdmsg.AddInvVect(wire.NewInvVect(wire.InvTypeMwebHeader, &lastHash))
+		gdmsg.AddInvVect(wire.NewInvVect(wire.InvTypeMwebLeafset, &lastHash))
+
+		var (
+			mwebHeader  *wire.MsgMwebHeader
+			mwebLeafset *wire.MsgMwebLeafset
+		)
+		b.cfg.queryPeers(
+			gdmsg,
+			func(sp *ServerPeer, resp wire.Message, quit chan<- struct{}) {
+
+				switch m := resp.(type) {
+				case *wire.MsgMwebHeader:
+					mwebHeader = m
+				case *wire.MsgMwebLeafset:
+					mwebLeafset = m
+				}
+				if mwebHeader != nil && mwebLeafset != nil {
+					close(quit)
+				}
+			},
+		)
+		select {
+		case <-b.quit:
+			return
+		default:
+			if mwebHeader == nil || mwebLeafset == nil {
+				continue
+			}
+		}
+
+		log.Infof("Got mwebheader and mwebleafset at (block_height=%v, block_hash=%v)",
+			lastHeight, lastHeader.BlockHash())
 	}
 }
 
