@@ -563,23 +563,30 @@ func (b *blockManager) verifyMwebHeader(
 		return false
 	}
 
-	if !bloom.VerifyMerkleBlock(&mwebHeader.Merkle) {
+	extractResult := bloom.VerifyMerkleBlock(&mwebHeader.Merkle)
+	if !extractResult.Root.IsEqual(&mwebHeader.Merkle.Header.MerkleRoot) {
 		log.Info("mwebheader merkle block is bad")
 		return false
 	}
 
 	if !mwebHeader.Hogex.IsHogEx {
-		log.Info("mwebheader hogex not hogex")
+		log.Info("mwebheader hogex is not hogex")
 		return false
 	}
 
 	// Validate that the hash of the HogEx transaction in the tx message
 	// matches the hash in the merkleblock message, and that it’s the last
 	// transaction committed to by the merkle root of the block.
-	hashes := mwebHeader.Merkle.Hashes
-	if mwebHeader.Hogex.TxHash() != *hashes[len(hashes)-1] {
+	finalTx := extractResult.Match[len(extractResult.Match)-1]
+	if mwebHeader.Hogex.TxHash() != *finalTx {
 		log.Infof("Tx hash mismatch, hogex=%v, last merkle tx=%v",
-			mwebHeader.Hogex.TxHash(), *hashes[len(hashes)-1])
+			mwebHeader.Hogex.TxHash(), *finalTx)
+		return false
+	}
+	finalTxPos := extractResult.Index[len(extractResult.Index)-1]
+	if finalTxPos != mwebHeader.Merkle.Transactions-1 {
+		log.Infof("Tx index mismatch, got=%v, expected=%v",
+			finalTxPos, mwebHeader.Merkle.Transactions-1)
 		return false
 	}
 
