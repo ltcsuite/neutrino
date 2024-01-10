@@ -16,6 +16,7 @@ import (
 	"github.com/ltcsuite/ltcd/chaincfg"
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
 	"github.com/ltcsuite/ltcd/ltcutil"
+	"github.com/ltcsuite/ltcd/ltcutil/bloom"
 	"github.com/ltcsuite/ltcd/ltcutil/gcs"
 	"github.com/ltcsuite/ltcd/ltcutil/gcs/builder"
 	"github.com/ltcsuite/ltcd/txscript"
@@ -559,6 +560,11 @@ func (b *blockManager) verifyMwebHeader(
 	if mwebHeader.Merkle.Header.BlockHash() != *lastHash {
 		log.Infof("Block hash mismatch, merkle header hash=%v, block hash=%v",
 			mwebHeader.Merkle.Header.BlockHash(), *lastHash)
+		return false
+	}
+
+	if !bloom.VerifyMerkleBlock(&mwebHeader.Merkle) {
+		log.Info("mwebheader merkle block is bad")
 		return false
 	}
 
