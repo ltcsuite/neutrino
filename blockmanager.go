@@ -18,6 +18,7 @@ import (
 	"github.com/ltcsuite/ltcd/ltcutil"
 	"github.com/ltcsuite/ltcd/ltcutil/gcs"
 	"github.com/ltcsuite/ltcd/ltcutil/gcs/builder"
+	"github.com/ltcsuite/ltcd/txscript"
 	"github.com/ltcsuite/ltcd/wire"
 	"github.com/ltcsuite/neutrino/banman"
 	"github.com/ltcsuite/neutrino/blockntfns"
@@ -25,6 +26,7 @@ import (
 	"github.com/ltcsuite/neutrino/headerfs"
 	"github.com/ltcsuite/neutrino/headerlist"
 	"github.com/ltcsuite/neutrino/query"
+	"lukechampine.com/blake3"
 )
 
 const (
@@ -478,22 +480,22 @@ func (b *blockManager) mwebHandler() {
 	defer b.wg.Done()
 	defer log.Trace("Mweb handler done")
 
-	b.newHeadersSignal.L.Lock()
-	for !b.BlockHeadersSynced() {
-		b.newHeadersSignal.Wait()
-
-		// While we're awake, we'll quickly check to see if we need to
-		// quit early.
-		select {
-		case <-b.quit:
-			b.newHeadersSignal.L.Unlock()
-			return
-		default:
-		}
-	}
-	b.newHeadersSignal.L.Unlock()
-
 	for {
+		b.newHeadersSignal.L.Lock()
+		for !b.BlockHeadersSynced() {
+			b.newHeadersSignal.Wait()
+
+			// While we're awake, we'll quickly check to see if we need to
+			// quit early.
+			select {
+			case <-b.quit:
+				b.newHeadersSignal.L.Unlock()
+				return
+			default:
+			}
+		}
+		b.newHeadersSignal.L.Unlock()
+
 		// Now that the block headers are finished, we'll grab the current
 		// chain tip so we can base our mweb header sync off of that.
 		lastHeader, lastHeight, err := b.cfg.BlockHeaders.ChainTip()
@@ -504,7 +506,7 @@ func (b *blockManager) mwebHandler() {
 		lastHash := lastHeader.BlockHash()
 
 		log.Infof("Starting mweb sync at (block_height=%v, block_hash=%v)",
-			lastHeight, lastHeader.BlockHash())
+			lastHeight, lastHash)
 
 		gdmsg := wire.NewMsgGetData()
 		gdmsg.AddInvVect(wire.NewInvVect(wire.InvTypeMwebHeader, &lastHash))
@@ -513,6 +515,7 @@ func (b *blockManager) mwebHandler() {
 		var (
 			mwebHeader  *wire.MsgMwebHeader
 			mwebLeafset *wire.MsgMwebLeafset
+			verified    bool
 		)
 		b.cfg.queryPeers(
 			gdmsg,
@@ -524,7 +527,8 @@ func (b *blockManager) mwebHandler() {
 				case *wire.MsgMwebLeafset:
 					mwebLeafset = m
 				}
-				if mwebHeader != nil && mwebLeafset != nil {
+				verified = b.verifyMwebHeader(mwebHeader, mwebLeafset, lastHeight, &lastHash)
+				if verified {
 					close(quit)
 				}
 			},
@@ -533,14 +537,69 @@ func (b *blockManager) mwebHandler() {
 		case <-b.quit:
 			return
 		default:
-			if mwebHeader == nil || mwebLeafset == nil {
+			if !verified {
 				continue
 			}
 		}
 
-		log.Infof("Got mwebheader and mwebleafset at (block_height=%v, block_hash=%v)",
-			lastHeight, lastHeader.BlockHash())
+		break
 	}
+}
+
+func (b *blockManager) verifyMwebHeader(
+	mwebHeader *wire.MsgMwebHeader, mwebLeafset *wire.MsgMwebLeafset,
+	lastHeight uint32, lastHash *chainhash.Hash) bool {
+
+	if mwebHeader == nil || mwebLeafset == nil {
+		return false
+	}
+	log.Infof("Got mwebheader and mwebleafset at (block_height=%v, block_hash=%v)",
+		lastHeight, *lastHash)
+
+	if mwebHeader.Merkle.Header.BlockHash() != *lastHash {
+		log.Infof("Block hash mismatch, merkle header hash=%v, block hash=%v",
+			mwebHeader.Merkle.Header.BlockHash(), *lastHash)
+		return false
+	}
+
+	if !mwebHeader.Hogex.IsHogEx {
+		log.Info("mwebheader hogex not hogex")
+		return false
+	}
+
+	// Validate that the hash of the HogEx transaction in the tx message
+	// matches the hash in the merkleblock message, and that it’s the last
+	// transaction committed to by the merkle root of the block.
+	hashes := mwebHeader.Merkle.Hashes
+	if mwebHeader.Hogex.TxHash() != *hashes[len(hashes)-1] {
+		log.Infof("Tx hash mismatch, hogex=%v, last merkle tx=%v",
+			mwebHeader.Hogex.TxHash(), *hashes[len(hashes)-1])
+		return false
+	}
+
+	// Validate that the pubkey script of the first output contains the HogAddr,
+	// which shall consist of <OP_8><0x20> followed by the 32-byte hash of the
+	// MWEB header.
+	mwebHeaderHash := mwebHeader.MwebHeader.Hash()
+	script := append([]byte{txscript.OP_8, 0x20}, mwebHeaderHash[:]...)
+	if !bytes.Equal(mwebHeader.Hogex.TxOut[0].PkScript, script) {
+		log.Infof("HogAddr mismatch, hogex=%v, expected=%v",
+			mwebHeader.Hogex.TxOut[0].PkScript, script)
+		return false
+	}
+
+	// Verify that the hash of the leafset bitmap matches the
+	// leafset_root value in the MWEB header.
+	leafsetRoot := blake3.Sum256(mwebLeafset.Leafset)
+	if leafsetRoot != mwebHeader.MwebHeader.LeafsetRoot {
+		log.Infof("Leafset root mismatch, leafset=%v, in header=%v",
+			leafsetRoot, mwebHeader.MwebHeader.LeafsetRoot)
+		return false
+	}
+
+	log.Infof("Verified mwebheader and mwebleafset at (block_height=%v, block_hash=%v)",
+		lastHeight, *lastHash)
+	return true
 }
 
 // cfHandler is the cfheader download handler for the block manager. It must be
