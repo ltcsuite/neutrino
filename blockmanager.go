@@ -526,6 +526,11 @@ func (b *blockManager) mwebHandler() {
 				case *wire.MsgMwebHeader:
 					mwebHeader = m
 				case *wire.MsgMwebLeafset:
+					if m.BlockHash.IsEqual(&chainhash.Hash{}) && len(m.Leafset) == 0 {
+						// Empty leafset; we are too far behind and need to catch-up first
+						close(quit)
+						return
+					}
 					mwebLeafset = m
 				}
 				verified = b.verifyMwebHeader(mwebHeader, mwebLeafset, lastHeight, &lastHash)
@@ -603,7 +608,7 @@ func (b *blockManager) verifyMwebHeader(
 
 	// Verify that the hash of the leafset bitmap matches the
 	// leafset_root value in the MWEB header.
-	leafsetRoot := blake3.Sum256(mwebLeafset.Leafset)
+	leafsetRoot := chainhash.Hash(blake3.Sum256(mwebLeafset.Leafset))
 	if leafsetRoot != mwebHeader.MwebHeader.LeafsetRoot {
 		log.Infof("Leafset root mismatch, leafset=%v, in header=%v",
 			leafsetRoot, mwebHeader.MwebHeader.LeafsetRoot)
