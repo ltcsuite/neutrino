@@ -16,10 +16,8 @@ import (
 	"github.com/ltcsuite/ltcd/chaincfg"
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
 	"github.com/ltcsuite/ltcd/ltcutil"
-	"github.com/ltcsuite/ltcd/ltcutil/bloom"
 	"github.com/ltcsuite/ltcd/ltcutil/gcs"
 	"github.com/ltcsuite/ltcd/ltcutil/gcs/builder"
-	"github.com/ltcsuite/ltcd/txscript"
 	"github.com/ltcsuite/ltcd/wire"
 	"github.com/ltcsuite/neutrino/banman"
 	"github.com/ltcsuite/neutrino/blockntfns"
@@ -27,7 +25,6 @@ import (
 	"github.com/ltcsuite/neutrino/headerfs"
 	"github.com/ltcsuite/neutrino/headerlist"
 	"github.com/ltcsuite/neutrino/query"
-	"lukechampine.com/blake3"
 )
 
 const (
@@ -533,7 +530,7 @@ func (b *blockManager) mwebHandler() {
 					}
 					mwebLeafset = m
 				}
-				verified = b.verifyMwebHeader(mwebHeader, mwebLeafset, lastHeight, &lastHash)
+				verified = verifyMwebHeader(mwebHeader, mwebLeafset, lastHeight, &lastHash)
 				if verified {
 					close(quit)
 				}
@@ -550,74 +547,6 @@ func (b *blockManager) mwebHandler() {
 
 		break
 	}
-}
-
-func (b *blockManager) verifyMwebHeader(
-	mwebHeader *wire.MsgMwebHeader, mwebLeafset *wire.MsgMwebLeafset,
-	lastHeight uint32, lastHash *chainhash.Hash) bool {
-
-	if mwebHeader == nil || mwebLeafset == nil {
-		return false
-	}
-	log.Infof("Got mwebheader and mwebleafset at (block_height=%v, block_hash=%v)",
-		lastHeight, *lastHash)
-
-	if mwebHeader.Merkle.Header.BlockHash() != *lastHash {
-		log.Infof("Block hash mismatch, merkle header hash=%v, block hash=%v",
-			mwebHeader.Merkle.Header.BlockHash(), *lastHash)
-		return false
-	}
-
-	extractResult := bloom.VerifyMerkleBlock(&mwebHeader.Merkle)
-	if !extractResult.Root.IsEqual(&mwebHeader.Merkle.Header.MerkleRoot) {
-		log.Info("mwebheader merkle block is bad")
-		return false
-	}
-
-	if !mwebHeader.Hogex.IsHogEx {
-		log.Info("mwebheader hogex is not hogex")
-		return false
-	}
-
-	// Validate that the hash of the HogEx transaction in the tx message
-	// matches the hash in the merkleblock message, and that it’s the last
-	// transaction committed to by the merkle root of the block.
-	finalTx := extractResult.Match[len(extractResult.Match)-1]
-	if mwebHeader.Hogex.TxHash() != *finalTx {
-		log.Infof("Tx hash mismatch, hogex=%v, last merkle tx=%v",
-			mwebHeader.Hogex.TxHash(), *finalTx)
-		return false
-	}
-	finalTxPos := extractResult.Index[len(extractResult.Index)-1]
-	if finalTxPos != mwebHeader.Merkle.Transactions-1 {
-		log.Infof("Tx index mismatch, got=%v, expected=%v",
-			finalTxPos, mwebHeader.Merkle.Transactions-1)
-		return false
-	}
-
-	// Validate that the pubkey script of the first output contains the HogAddr,
-	// which shall consist of <OP_8><0x20> followed by the 32-byte hash of the
-	// MWEB header.
-	mwebHeaderHash := mwebHeader.MwebHeader.Hash()
-	script := append([]byte{txscript.OP_8, 0x20}, mwebHeaderHash[:]...)
-	if !bytes.Equal(mwebHeader.Hogex.TxOut[0].PkScript, script) {
-		log.Infof("HogAddr mismatch, hogex=%v, expected=%v",
-			mwebHeader.Hogex.TxOut[0].PkScript, script)
-		return false
-	}
-
-	// Verify that the hash of the leafset bitmap matches the
-	// leafset_root value in the MWEB header.
-	leafsetRoot := chainhash.Hash(blake3.Sum256(mwebLeafset.Leafset))
-	if leafsetRoot != mwebHeader.MwebHeader.LeafsetRoot {
-		log.Infof("Leafset root mismatch, leafset=%v, in header=%v",
-			leafsetRoot, mwebHeader.MwebHeader.LeafsetRoot)
-		return false
-	}
-
-	log.Infof("Verified mwebheader and mwebleafset at (block_height=%v, block_hash=%v)",
-		lastHeight, *lastHash)
-	return true
 }
 
 // cfHandler is the cfheader download handler for the block manager. It must be
