@@ -117,12 +117,6 @@ type blockManagerCfg struct {
 			quit chan<- struct{}, peerQuit chan<- struct{}),
 		options ...QueryOption)
 
-	queryPeers func(
-		queryMsg wire.Message,
-		checkResponse func(sp *ServerPeer, resp wire.Message,
-			quit chan<- struct{}),
-		options ...QueryOption)
-
 	mempool *Mempool
 }
 
@@ -515,24 +509,21 @@ func (b *blockManager) mwebHandler() {
 			mwebLeafset *wire.MsgMwebLeafset
 			verified    bool
 		)
-		b.cfg.queryPeers(
+		b.cfg.queryAllPeers(
 			gdmsg,
-			func(sp *ServerPeer, resp wire.Message, quit chan<- struct{}) {
+			func(sp *ServerPeer, resp wire.Message, quit chan<- struct{},
+				peerQuit chan<- struct{}) {
 
 				switch m := resp.(type) {
 				case *wire.MsgMwebHeader:
 					mwebHeader = m
 				case *wire.MsgMwebLeafset:
-					if m.BlockHash.IsEqual(&chainhash.Hash{}) && len(m.Leafset) == 0 {
-						// Empty leafset; we are too far behind and need to catch-up first
-						close(quit)
-						return
-					}
 					mwebLeafset = m
 				}
 				verified = verifyMwebHeader(mwebHeader, mwebLeafset, lastHeight, &lastHash)
 				if verified {
 					close(quit)
+					close(peerQuit)
 				}
 			},
 		)
