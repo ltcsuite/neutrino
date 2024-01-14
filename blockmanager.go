@@ -536,6 +536,14 @@ func (b *blockManager) mwebHandler() {
 			}
 		}
 
+		// Get all the mweb utxos at this height.
+		b.getMwebUtxos(&mwebHeader.MwebHeader, mwebLeafset.Leafset, lastHeight, &lastHash)
+
+		// Now we check the headers again. If the block headers are not yet
+		// current, then we go back to the loop waiting for them to finish.
+		if !b.BlockHeadersSynced() {
+			continue
+		}
 		break
 	}
 }

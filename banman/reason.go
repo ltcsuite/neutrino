@@ -23,6 +23,10 @@ const (
 
 	// InvalidBlock signals that a peer served us a bad block.
 	InvalidBlock Reason = 5
+
+	// InvalidMwebUtxos signals that a peer served us an invalid
+	// mweb utxos message.
+	InvalidMwebUtxos Reason = 20
 )
 
 // String returns a human-readable description for the reason a peer was banned.
@@ -42,6 +46,9 @@ func (r Reason) String() string {
 
 	case InvalidBlock:
 		return "peer served an invalid block"
+
+	case InvalidMwebUtxos:
+		return "peer served invalid mweb utxos message"
 
 	default:
 		return "unknown reason"
