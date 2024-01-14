@@ -132,7 +132,7 @@ func (i nodeIdx) right() nodeIdx {
 func (i nodeIdx) hash(data []byte) *chainhash.Hash {
 	h := blake3.New(32, nil)
 	binary.Write(h, binary.LittleEndian, uint64(i))
-	h.Write(data)
+	wire.WriteVarBytes(h, 0, data)
 	hash := &chainhash.Hash{}
 	h.Sum(hash[:0])
 	return hash
@@ -166,6 +166,7 @@ type verifyMwebUtxosVars struct {
 	leafset                   leafset
 	firstLeafIdx, lastLeafIdx leafIdx
 	leavesUsed, hashesUsed    int
+	isProofHash               map[nodeIdx]bool
 }
 
 func (v *verifyMwebUtxosVars) nextLeaf() (leafIndex leafIdx, hash *chainhash.Hash) {
@@ -179,18 +180,19 @@ func (v *verifyMwebUtxosVars) nextLeaf() (leafIndex leafIdx, hash *chainhash.Has
 	return
 }
 
-func (v *verifyMwebUtxosVars) nextHash() (hash *chainhash.Hash) {
+func (v *verifyMwebUtxosVars) nextHash(nodeIdx nodeIdx) (hash *chainhash.Hash) {
 	if v.hashesUsed == len(v.mwebUtxos.ProofHashes) {
 		return
 	}
 	hash = v.mwebUtxos.ProofHashes[v.hashesUsed]
 	v.hashesUsed++
+	v.isProofHash[nodeIdx] = true
 	return
 }
 
 func (v *verifyMwebUtxosVars) calcNodeHash(nodeIdx nodeIdx, height uint64) *chainhash.Hash {
-	if nodeIdx < v.firstLeafIdx.nodeIdx() {
-		return v.nextHash()
+	if nodeIdx < v.firstLeafIdx.nodeIdx() || v.isProofHash[nodeIdx] {
+		return v.nextHash(nodeIdx)
 	}
 	if height == 0 {
 		leafIdx := nodeIdx.leafIdx()
@@ -204,17 +206,23 @@ func (v *verifyMwebUtxosVars) calcNodeHash(nodeIdx nodeIdx, height uint64) *chai
 		return nodeIdx.hash(outputId[:])
 	}
 	left := v.calcNodeHash(nodeIdx.left(height), height-1)
-	if left == nil {
-		return nil
-	}
 	var right *chainhash.Hash
 	if v.lastLeafIdx.nodeIdx() <= nodeIdx.left(height) {
-		right = v.nextHash()
+		right = v.nextHash(nodeIdx.right())
 	} else {
 		right = v.calcNodeHash(nodeIdx.right(), height-1)
 	}
-	if right == nil {
+	switch {
+	case left == nil && right == nil:
 		return nil
+	case left == nil:
+		if left = v.nextHash(nodeIdx.left(height)); left == nil {
+			return nil
+		}
+	case right == nil:
+		if right = v.nextHash(nodeIdx.right()); right == nil {
+			return nil
+		}
 	}
 	return nodeIdx.parentHash(left[:], right[:])
 }
@@ -238,6 +246,7 @@ func verifyMwebUtxos(mwebHeader *wire.MsgMwebHeader,
 		leafset:      leafset(mwebLeafset.Leafset),
 		firstLeafIdx: leafIdx(mwebUtxos.StartIndex),
 		lastLeafIdx:  leafIdx(mwebUtxos.StartIndex),
+		isProofHash:  make(map[nodeIdx]bool),
 	}
 	nextLeafIdx := leafIdx(mwebHeader.MwebHeader.OutputMMRSize)
 
@@ -264,28 +273,34 @@ func verifyMwebUtxos(mwebHeader *wire.MsgMwebHeader,
 
 	peaks := calcPeaks(uint64(nextLeafIdx.nodeIdx()))
 	var peakHashes []*chainhash.Hash
-	for _, peakNodeIdx := range peaks {
-		peakHash := v.calcNodeHash(peakNodeIdx, peakNodeIdx.height())
-		if peakHash == nil {
-			return false
-		}
-		peakHashes = append(peakHashes, peakHash)
-		if v.lastLeafIdx.nodeIdx() <= peakNodeIdx {
-			if peakNodeIdx != peaks[len(peaks)-1] {
-				baggedPeak := v.nextHash()
-				if baggedPeak == nil {
-					return false
-				}
-				peakHashes = append(peakHashes, baggedPeak)
+	for i := 0; i < 2; i++ {
+		peakHashes = nil
+		v.leavesUsed = 0
+		v.hashesUsed = 0
+
+		for _, peakNodeIdx := range peaks {
+			peakHash := v.calcNodeHash(peakNodeIdx, peakNodeIdx.height())
+			if peakHash == nil {
+				return false
 			}
-			break
+			peakHashes = append(peakHashes, peakHash)
+			if v.lastLeafIdx.nodeIdx() <= peakNodeIdx {
+				if peakNodeIdx != peaks[len(peaks)-1] {
+					baggedPeak := v.nextHash(nextLeafIdx.nodeIdx())
+					if baggedPeak == nil {
+						return false
+					}
+					peakHashes = append(peakHashes, baggedPeak)
+				}
+				break
+			}
+		}
+		if v.leavesUsed != len(v.mwebUtxos.Utxos) ||
+			v.hashesUsed != len(v.mwebUtxos.ProofHashes) {
+			return false
 		}
 	}
 
-	if v.leavesUsed != len(v.mwebUtxos.Utxos) ||
-		v.hashesUsed != len(v.mwebUtxos.ProofHashes) {
-		return false
-	}
 	baggedPeak := peakHashes[len(peakHashes)-1]
 	for i := len(peakHashes) - 2; i >= 0; i-- {
 		baggedPeak = nextLeafIdx.nodeIdx().parentHash(peakHashes[i][:], baggedPeak[:])
