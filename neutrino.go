@@ -29,6 +29,7 @@ import (
 	"github.com/ltcsuite/neutrino/chanutils"
 	"github.com/ltcsuite/neutrino/filterdb"
 	"github.com/ltcsuite/neutrino/headerfs"
+	"github.com/ltcsuite/neutrino/mwebdb"
 	"github.com/ltcsuite/neutrino/pushtx"
 	"github.com/ltcsuite/neutrino/query"
 )
@@ -660,6 +661,7 @@ type ChainService struct { // nolint:maligned
 	FilterDB         filterdb.FilterDatabase
 	BlockHeaders     headerfs.BlockHeaderStore
 	RegFilterHeaders *headerfs.FilterHeaderStore
+	MwebCoinDB       mwebdb.CoinDatabase
 	persistToDisk    bool
 
 	FilterCache *lru.Cache[FilterCacheKey, *CacheableFilter]
@@ -826,10 +828,16 @@ func NewChainService(cfg Config) (*ChainService, error) {
 		return nil, err
 	}
 
+	s.MwebCoinDB, err = mwebdb.New(cfg.Database)
+	if err != nil {
+		return nil, err
+	}
+
 	bm, err := newBlockManager(&blockManagerCfg{
 		ChainParams:      s.chainParams,
 		BlockHeaders:     s.BlockHeaders,
 		RegFilterHeaders: s.RegFilterHeaders,
+		MwebCoins:        s.MwebCoinDB,
 		TimeSource:       s.timeSource,
 		QueryDispatcher:  s.workManager,
 		BanPeer:          s.BanPeer,

@@ -24,6 +24,7 @@ import (
 	"github.com/ltcsuite/neutrino/chainsync"
 	"github.com/ltcsuite/neutrino/headerfs"
 	"github.com/ltcsuite/neutrino/headerlist"
+	"github.com/ltcsuite/neutrino/mwebdb"
 	"github.com/ltcsuite/neutrino/query"
 )
 
@@ -92,6 +93,9 @@ type blockManagerCfg struct {
 	// RegFilterHeaders is the store where filter headers for the regular
 	// compact filters are persistently stored.
 	RegFilterHeaders *headerfs.FilterHeaderStore
+
+	// MwebCoins is the store where mweb coins are persistently stored.
+	MwebCoins mwebdb.CoinDatabase
 
 	// TimeSource is used to access a time estimate based on the clocks of
 	// the connected peers.

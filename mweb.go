@@ -3,6 +3,7 @@ package neutrino
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"math/bits"
 
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
@@ -274,8 +275,8 @@ func verifyMwebUtxos(mwebHeader *wire.MwebHeader,
 	}
 
 	var (
-		nextLeafIdx = leafIdx(mwebHeader.OutputMMRSize)
-		peaks       = calcPeaks(uint64(nextLeafIdx.nodeIdx()))
+		nextNodeIdx = leafIdx(mwebHeader.OutputMMRSize).nodeIdx()
+		peaks       = calcPeaks(uint64(nextNodeIdx))
 		peakHashes  []*chainhash.Hash
 	)
 	for i := 0; i < 2; i++ {
@@ -291,7 +292,7 @@ func verifyMwebUtxos(mwebHeader *wire.MwebHeader,
 			peakHashes = append(peakHashes, peakHash)
 			if v.lastLeafIdx.nodeIdx() <= peakNodeIdx {
 				if peakNodeIdx != peaks[len(peaks)-1] {
-					baggedPeak := v.nextHash(nextLeafIdx.nodeIdx())
+					baggedPeak := v.nextHash(nextNodeIdx)
 					if baggedPeak == nil {
 						return false
 					}
@@ -308,7 +309,7 @@ func verifyMwebUtxos(mwebHeader *wire.MwebHeader,
 
 	baggedPeak := peakHashes[len(peakHashes)-1]
 	for i := len(peakHashes) - 2; i >= 0; i-- {
-		baggedPeak = nextLeafIdx.nodeIdx().parentHash(peakHashes[i][:], baggedPeak[:])
+		baggedPeak = nextNodeIdx.parentHash(peakHashes[i][:], baggedPeak[:])
 	}
 	return baggedPeak.IsEqual(&mwebHeader.OutputRoot)
 }
@@ -457,6 +458,14 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 
 			log.Debugf("Writing mwebutxos at index=%v", curIndex)
 
+			var coins []*wire.MwebOutput
+			for _, utxo := range r.Utxos {
+				coins = append(coins, utxo.Output)
+			}
+			err := b.cfg.MwebCoins.PutCoins(coins)
+			if err != nil {
+				panic(fmt.Sprintf("couldn't write mweb coins: %v", err))
+			}
 			totalUtxos += len(r.Utxos)
 
 			// Update the next index to write.
