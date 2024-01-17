@@ -145,9 +145,7 @@ func (i nodeIdx) hash(data []byte) *chainhash.Hash {
 	h := blake3.New(32, nil)
 	binary.Write(h, binary.LittleEndian, uint64(i))
 	wire.WriteVarBytes(h, 0, data)
-	hash := &chainhash.Hash{}
-	h.Sum(hash[:0])
-	return hash
+	return (*chainhash.Hash)(h.Sum(nil))
 }
 
 func (i nodeIdx) parentHash(left, right []byte) *chainhash.Hash {
@@ -155,9 +153,7 @@ func (i nodeIdx) parentHash(left, right []byte) *chainhash.Hash {
 	binary.Write(h, binary.LittleEndian, uint64(i))
 	h.Write(left)
 	h.Write(right)
-	hash := &chainhash.Hash{}
-	h.Sum(hash[:0])
-	return hash
+	return (*chainhash.Hash)(h.Sum(nil))
 }
 
 func calcPeaks(nodes uint64) (peaks []nodeIdx) {
@@ -187,7 +183,7 @@ func (v *verifyMwebUtxosVars) nextLeaf() (leafIndex leafIdx, hash *chainhash.Has
 	}
 	utxo := v.mwebUtxos.Utxos[v.leavesUsed]
 	leafIndex = leafIdx(utxo.LeafIndex)
-	hash = &utxo.OutputId
+	hash = utxo.OutputId
 	v.leavesUsed++
 	return
 }
