@@ -1181,6 +1181,12 @@ func (s *ChainService) NotifyMempoolReceived(addrs []ltcutil.Address) {
 	s.mempool.NotifyReceived(addrs)
 }
 
+// RegisterMwebUtxosCallback registers a callback to be fired whenever new mweb utxos
+// are received
+func (s *ChainService) RegisterMwebUtxosCallback(onMwebUtxos func(utxos []*wire.MwebOutput)) {
+	s.blockManager.RegisterMwebUtxosCallback(onMwebUtxos)
+}
+
 // peerHandler is used to handle peer operations such as adding and removing
 // peers to and from the server, banning peers, and broadcasting messages to
 // peers.  It must be run in a goroutine.

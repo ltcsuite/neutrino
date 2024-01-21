@@ -383,6 +383,9 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 		q.requests(), query.Cancel(b.quit),
 	)
 
+	b.mwebUtxosCallbacksMtx.Lock()
+	defer b.mwebUtxosCallbacksMtx.Unlock()
+
 	// Keep waiting for more mwebutxos as long as we haven't received an
 	// answer for our last getmwebutxos, and no error is encountered.
 	totalUtxos := 0
@@ -461,6 +464,9 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 			err := b.cfg.MwebCoins.PutCoins(coins)
 			if err != nil {
 				panic(fmt.Sprintf("couldn't write mweb coins: %v", err))
+			}
+			for _, cb := range b.mwebUtxosCallbacks {
+				cb(coins)
 			}
 			totalUtxos += len(r.Utxos)
 

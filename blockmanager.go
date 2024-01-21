@@ -221,6 +221,9 @@ type blockManager struct { // nolint:maligned
 	blocksPerRetarget   int32 // target timespan / target time per block
 
 	requestedTxns map[chainhash.Hash]struct{}
+
+	mwebUtxosCallbacksMtx sync.RWMutex
+	mwebUtxosCallbacks    []func(utxos []*wire.MwebOutput)
 }
 
 // newBlockManager returns a new bitcoin block manager.  Use Start to begin
@@ -3197,4 +3200,14 @@ func (l *lightHeaderCtx) RelativeAncestorCtx(
 	return newLightHeaderCtx(
 		ancestorHeight, ancestor, l.store, l.headerList,
 	)
+}
+
+// RegisterMwebUtxosCallback will register a callback that will fire when
+// new mweb utxos are received.
+func (b *blockManager) RegisterMwebUtxosCallback(
+	onMwebUtxos func(utxos []*wire.MwebOutput)) {
+
+	b.mwebUtxosCallbacksMtx.Lock()
+	defer b.mwebUtxosCallbacksMtx.Unlock()
+	b.mwebUtxosCallbacks = append(b.mwebUtxosCallbacks, onMwebUtxos)
 }
