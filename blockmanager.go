@@ -551,7 +551,41 @@ func (b *blockManager) mwebHandler() {
 		if !b.BlockHeadersSynced() {
 			continue
 		}
-		break
+
+		// If block headers are current, but the mweb sync was for an
+		// earlier block, we also go back to the loop.
+		b.newHeadersMtx.RLock()
+		if lastHeight < b.headerTip {
+			b.newHeadersMtx.RUnlock()
+			continue
+		}
+		b.newHeadersMtx.RUnlock()
+
+		log.Infof("Fully caught up with mweb at height "+
+			"%v, waiting at tip for new blocks", lastHeight)
+
+		// Now that we've been fully caught up to the tip of the current header
+		// chain, we'll wait here for a signal that more blocks have been
+		// connected. If this happens then we'll do another round to fetch the
+		// new set of mweb utxos.
+
+		// We'll wait until the header tip has advanced.
+		b.newHeadersSignal.L.Lock()
+		for lastHeight == b.headerTip {
+			// We'll wait here until we're woken up by the
+			// broadcast signal.
+			b.newHeadersSignal.Wait()
+
+			// Before we proceed, we'll check if we need to exit at
+			// all.
+			select {
+			case <-b.quit:
+				b.newHeadersSignal.L.Unlock()
+				return
+			default:
+			}
+		}
+		b.newHeadersSignal.L.Unlock()
 	}
 }
 

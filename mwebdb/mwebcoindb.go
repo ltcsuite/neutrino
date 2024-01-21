@@ -2,6 +2,7 @@ package mwebdb
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
@@ -23,11 +24,19 @@ var (
 	// ErrCoinNotFound is returned when a coin for an output ID is
 	// unable to be located.
 	ErrCoinNotFound = fmt.Errorf("unable to find coin")
+
+	// ErrUnexpectedValueLen is returned when the bytes value is
+	// of an unexpected length.
+	ErrUnexpectedValueLen = fmt.Errorf("unexpected value length")
 )
 
 // CoinDatabase is an interface which represents an object that is capable of
 // storing and retrieving coins according to their corresponding output ID.
 type CoinDatabase interface {
+	// Get and set the last coin index we have synced up to.
+	GetLastIndex() (uint64, error)
+	PutLastIndex(index uint64) error
+
 	// PutCoin stores a coin with the given output ID to persistent
 	// storage.
 	PutCoin(*chainhash.Hash, *wire.MwebOutput) error
@@ -77,6 +86,33 @@ func New(db walletdb.DB) (*CoinStore, error) {
 	}
 
 	return &CoinStore{db: db}, nil
+}
+
+func (c *CoinStore) GetLastIndex() (index uint64, err error) {
+	err = walletdb.View(c.db, func(tx walletdb.ReadTx) error {
+		rootBucket := tx.ReadBucket(rootBucket)
+
+		b := rootBucket.Get([]byte("lastIndex"))
+		if b == nil {
+			return nil
+		}
+		if len(b) != 8 {
+			return ErrUnexpectedValueLen
+		}
+
+		index = binary.LittleEndian.Uint64(b)
+		return nil
+	})
+	return
+}
+
+func (c *CoinStore) PutLastIndex(index uint64) error {
+	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
+		rootBucket := tx.ReadWriteBucket(rootBucket)
+
+		b := binary.LittleEndian.AppendUint64(nil, index)
+		return rootBucket.Put([]byte("lastIndex"), b)
+	})
 }
 
 // PutCoin stores a coin with the given output ID to persistent

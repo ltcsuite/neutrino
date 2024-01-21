@@ -328,7 +328,11 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 	log.Infof("Fetching set of mweb utxos from "+
 		"height=%v, hash=%v", lastHeight, *lastHash)
 
-	var curIndex leafIdx
+	dbIndex, err := b.cfg.MwebCoins.GetLastIndex()
+	if err != nil {
+		panic(fmt.Sprintf("couldn't read mweb coins db: %v", err))
+	}
+	curIndex := leafIdx(dbIndex)
 	if !leafset.contains(curIndex) {
 		curIndex = leafset.nextUnspent(curIndex)
 	}
@@ -473,6 +477,13 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 			// Update the next index to write.
 			lastIndex := leafIdx(r.Utxos[len(r.Utxos)-1].LeafIndex)
 			curIndex = leafset.nextUnspent(lastIndex)
+			if curIndex > leafIdx(mwebHeader.OutputMMRSize) {
+				curIndex = leafIdx(mwebHeader.OutputMMRSize)
+			}
+
+			if err := b.cfg.MwebCoins.PutLastIndex(uint64(curIndex)); err != nil {
+				panic(fmt.Sprintf("couldn't write mweb coins index: %v", err))
+			}
 		}
 
 		// If the current index is beyond the end of the leafset,
