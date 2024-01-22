@@ -18,6 +18,10 @@ var (
 
 	// coinBucket is the bucket that stores the coins.
 	coinBucket = []byte("coins")
+
+	// leafBucket is the bucket that stores the mapping between
+	// leaf indices and output IDs.
+	leafBucket = []byte("leaves")
 )
 
 var (
@@ -39,10 +43,10 @@ type CoinDatabase interface {
 
 	// PutCoin stores a coin with the given output ID to persistent
 	// storage.
-	PutCoin(*chainhash.Hash, *wire.MwebOutput) error
+	PutCoin(*chainhash.Hash, *wire.MwebNetUtxo) error
 
 	// PutCoins stores coins to persistent storage.
-	PutCoins([]*wire.MwebOutput) error
+	PutCoins([]*wire.MwebNetUtxo) error
 
 	// FetchCoin attempts to fetch a coin with the given output ID
 	// from persistent storage. In the case that a coin matching the
@@ -79,6 +83,10 @@ func New(db walletdb.DB) (*CoinStore, error) {
 		// If the main bucket doesn't already exist, then we'll need to
 		// create the sub-buckets.
 		_, err = rootBucket.CreateBucketIfNotExists(coinBucket)
+		if err != nil {
+			return err
+		}
+		_, err = rootBucket.CreateBucketIfNotExists(leafBucket)
 		return err
 	})
 	if err != nil && err != walletdb.ErrBucketExists {
@@ -130,41 +138,54 @@ func (c *CoinStore) PutLeafSet(leafset []byte, numLeaves uint64) error {
 //
 // NOTE: This method is a part of the CoinDatabase interface.
 func (c *CoinStore) PutCoin(outputId *chainhash.Hash,
-	coin *wire.MwebOutput) error {
+	coin *wire.MwebNetUtxo) error {
 
 	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
 		rootBucket := tx.ReadWriteBucket(rootBucket)
 		coinBucket := rootBucket.NestedReadWriteBucket(coinBucket)
+		leafBucket := rootBucket.NestedReadWriteBucket(leafBucket)
 
 		if coin == nil {
 			return coinBucket.Put(outputId[:], nil)
 		}
 
 		var buf bytes.Buffer
-		if err := coin.Serialize(&buf); err != nil {
+		if err := coin.Output.Serialize(&buf); err != nil {
 			return err
 		}
 
-		return coinBucket.Put(outputId[:], buf.Bytes())
+		err := coinBucket.Put(coin.OutputId[:], buf.Bytes())
+		if err != nil {
+			return err
+		}
+
+		leafIndex := binary.LittleEndian.AppendUint64(nil, coin.LeafIndex)
+		return leafBucket.Put(leafIndex, coin.OutputId[:])
 	})
 }
 
 // PutCoins stores coins to persistent storage.
 //
 // NOTE: This method is a part of the CoinDatabase interface.
-func (c *CoinStore) PutCoins(coins []*wire.MwebOutput) error {
+func (c *CoinStore) PutCoins(coins []*wire.MwebNetUtxo) error {
 	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
 		rootBucket := tx.ReadWriteBucket(rootBucket)
 		coinBucket := rootBucket.NestedReadWriteBucket(coinBucket)
+		leafBucket := rootBucket.NestedReadWriteBucket(leafBucket)
 
 		var buf bytes.Buffer
 		for _, coin := range coins {
-			if err := coin.Serialize(&buf); err != nil {
+			if err := coin.Output.Serialize(&buf); err != nil {
 				return err
 			}
 
-			outputId := coin.Hash()
-			err := coinBucket.Put(outputId[:], buf.Bytes())
+			err := coinBucket.Put(coin.OutputId[:], buf.Bytes())
+			if err != nil {
+				return err
+			}
+
+			leafIndex := binary.LittleEndian.AppendUint64(nil, coin.LeafIndex)
+			err = leafBucket.Put(leafIndex, coin.OutputId[:])
 			if err != nil {
 				return err
 			}
@@ -214,7 +235,14 @@ func (c *CoinStore) PurgeCoins() error {
 		if err := rootBucket.DeleteNestedBucket(coinBucket); err != nil {
 			return err
 		}
+		if err := rootBucket.DeleteNestedBucket(leafBucket); err != nil {
+			return err
+		}
+
 		if _, err := rootBucket.CreateBucket(coinBucket); err != nil {
+			return err
+		}
+		if _, err := rootBucket.CreateBucket(leafBucket); err != nil {
 			return err
 		}
 

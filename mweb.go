@@ -495,16 +495,12 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 
 			log.Debugf("Writing mwebutxos at index=%v", curIndex)
 
-			var coins []*wire.MwebOutput
-			for _, utxo := range r.Utxos {
-				coins = append(coins, utxo.Output)
-			}
-			err := b.cfg.MwebCoins.PutCoins(coins)
+			err := b.cfg.MwebCoins.PutCoins(r.Utxos)
 			if err != nil {
 				panic(fmt.Sprintf("couldn't write mweb coins: %v", err))
 			}
 			for _, cb := range b.mwebUtxosCallbacks {
-				cb(coins)
+				cb(r.Utxos)
 			}
 			totalUtxos += len(r.Utxos)
 

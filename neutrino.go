@@ -1183,7 +1183,7 @@ func (s *ChainService) NotifyMempoolReceived(addrs []ltcutil.Address) {
 
 // RegisterMwebUtxosCallback registers a callback to be fired whenever new mweb utxos
 // are received
-func (s *ChainService) RegisterMwebUtxosCallback(onMwebUtxos func(utxos []*wire.MwebOutput)) {
+func (s *ChainService) RegisterMwebUtxosCallback(onMwebUtxos func(utxos []*wire.MwebNetUtxo)) {
 	s.blockManager.RegisterMwebUtxosCallback(onMwebUtxos)
 }
 
