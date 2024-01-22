@@ -183,8 +183,8 @@ func (c *CoinStore) PutCoins(coins []*wire.MwebNetUtxo) error {
 		coinBucket := rootBucket.NestedReadWriteBucket(coinBucket)
 		leafBucket := rootBucket.NestedReadWriteBucket(leafBucket)
 
-		var buf bytes.Buffer
 		for _, coin := range coins {
+			var buf bytes.Buffer
 			if err := coin.Output.Serialize(&buf); err != nil {
 				return err
 			}
@@ -199,7 +199,6 @@ func (c *CoinStore) PutCoins(coins []*wire.MwebNetUtxo) error {
 			if err != nil {
 				return err
 			}
-			buf.Reset()
 		}
 
 		return nil
