@@ -284,9 +284,9 @@ func verifyMwebUtxos(mwebHeader *wire.MwebHeader,
 			peakHash := v.calcNodeHash(peakNodeIdx, peakNodeIdx.height())
 			if peakHash == nil {
 				peakHash = v.nextHash(peakNodeIdx)
-			}
-			if peakHash == nil {
-				return false
+				if peakHash == nil {
+					return false
+				}
 			}
 			peakHashes = append(peakHashes, peakHash)
 			if v.lastLeafIdx.nodeIdx() <= peakNodeIdx {
@@ -516,6 +516,12 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 
 	if err := b.cfg.MwebCoins.PutLeafSet(newLeafset, newNumLeaves); err != nil {
 		panic(fmt.Sprintf("couldn't write mweb leafset: %v", err))
+	}
+
+	log.Infof("Purging %v spent mweb txos from db", len(removedLeaves))
+
+	if err := b.cfg.MwebCoins.PurgeLeaves(removedLeaves); err != nil {
+		panic(fmt.Sprintf("couldn't purge mweb txos: %v", err))
 	}
 }
 

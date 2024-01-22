@@ -29,6 +29,9 @@ var (
 	// unable to be located.
 	ErrCoinNotFound = fmt.Errorf("unable to find coin")
 
+	// ErrLeafNotFound is returned when a leaf is unable to be located.
+	ErrLeafNotFound = fmt.Errorf("unable to find leaf")
+
 	// ErrUnexpectedValueLen is returned when the bytes value is
 	// of an unexpected length.
 	ErrUnexpectedValueLen = fmt.Errorf("unexpected value length")
@@ -53,6 +56,10 @@ type CoinDatabase interface {
 	// target output ID cannot be found, then ErrCoinNotFound is to be
 	// returned.
 	FetchCoin(*chainhash.Hash) (*wire.MwebOutput, error)
+
+	// PurgeLeaves purges the specified leaves and their associated
+	// coins from persistent storage.
+	PurgeLeaves([]uint64) error
 
 	// PurgeCoins purges all coins from persistent storage.
 	PurgeCoins() error
@@ -146,7 +153,7 @@ func (c *CoinStore) PutCoin(outputId *chainhash.Hash,
 		leafBucket := rootBucket.NestedReadWriteBucket(leafBucket)
 
 		if coin == nil {
-			return coinBucket.Put(outputId[:], nil)
+			return coinBucket.Delete(outputId[:])
 		}
 
 		var buf bytes.Buffer
@@ -223,6 +230,34 @@ func (c *CoinStore) FetchCoin(outputId *chainhash.Hash) (*wire.MwebOutput, error
 	}
 
 	return coin, nil
+}
+
+// PurgeLeaves purges the specified leaves and their associated
+// coins from persistent storage.
+//
+// NOTE: This method is a part of the CoinDatabase interface.
+func (c *CoinStore) PurgeLeaves(leaves []uint64) error {
+	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
+		rootBucket := tx.ReadWriteBucket(rootBucket)
+		coinBucket := rootBucket.NestedReadWriteBucket(coinBucket)
+		leafBucket := rootBucket.NestedReadWriteBucket(leafBucket)
+
+		for _, leafIndex := range leaves {
+			leafIndex := binary.LittleEndian.AppendUint64(nil, leafIndex)
+			outputId := leafBucket.Get(leafIndex)
+			if outputId == nil {
+				return ErrLeafNotFound
+			}
+			if err := coinBucket.Delete(outputId); err != nil {
+				return err
+			}
+			if err := leafBucket.Delete(leafIndex); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }
 
 // PurgeCoins purges all coins from persistent storage.
