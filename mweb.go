@@ -323,49 +323,81 @@ type mwebUtxosQuery struct {
 const maxMwebUtxosPerQuery = 4096
 
 func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
-	leafset leafset, lastHeight uint32, lastHash *chainhash.Hash) {
+	newLeafset leafset, lastHeight uint32, lastHash *chainhash.Hash) {
 
 	log.Infof("Fetching set of mweb utxos from "+
 		"height=%v, hash=%v", lastHeight, *lastHash)
 
-	dbIndex, err := b.cfg.MwebCoins.GetLastIndex()
+	newNumLeaves := mwebHeader.OutputMMRSize
+	dbLeafset, oldNumLeaves, err := b.cfg.MwebCoins.GetLeafSet()
 	if err != nil {
 		panic(fmt.Sprintf("couldn't read mweb coins db: %v", err))
 	}
-	curIndex := leafIdx(dbIndex)
-	if !leafset.contains(curIndex) {
-		curIndex = leafset.nextUnspent(curIndex)
-	}
-	startIndex := curIndex
+	oldLeafset := leafset(dbLeafset)
 
-	log.Infof("Starting to query for mweb utxos from "+
-		"index=%v", startIndex)
+	// Skip over common prefix
+	var index uint64
+	for index < uint64(len(oldLeafset)) &&
+		index < uint64(len(newLeafset)) &&
+		oldLeafset[index] == newLeafset[index] {
+		index++
+	}
+	index *= 8
+	if index > oldNumLeaves {
+		index = oldNumLeaves
+	}
+	if index > newNumLeaves {
+		index = newNumLeaves
+	}
+
+	type span struct {
+		start uint64
+		count uint16
+	}
+	var addLeaf span
+	var addedLeaves []span
+	var removedLeaves []uint64
+	addLeafSpan := func() {
+		if addLeaf.count > 0 {
+			addedLeaves = append(addedLeaves, addLeaf)
+			addLeaf = span{}
+		}
+	}
+	for ; index < oldNumLeaves || index < newNumLeaves; index++ {
+		if oldLeafset.contains(leafIdx(index)) {
+			addLeafSpan()
+			if !newLeafset.contains(leafIdx(index)) {
+				removedLeaves = append(removedLeaves, index)
+			}
+		} else if newLeafset.contains(leafIdx(index)) {
+			if addLeaf.count == 0 {
+				addLeaf.start = index
+			}
+			addLeaf.count++
+			if addLeaf.count == maxMwebUtxosPerQuery {
+				addLeafSpan()
+			}
+		}
+	}
+	addLeafSpan()
 
 	var queryMsgs []wire.Message
-	for leafset.contains(startIndex) {
-		var numLeaves uint16
-		nextIndex := startIndex
-		for ; numLeaves < maxMwebUtxosPerQuery; numLeaves++ {
-			if !leafset.contains(nextIndex) {
-				break
-			}
-			nextIndex = leafset.nextUnspent(nextIndex)
-		}
+	for _, addLeaf := range addedLeaves {
 		queryMsgs = append(queryMsgs,
-			wire.NewMsgGetMwebUtxos(lastHash, uint64(startIndex),
-				numLeaves, wire.MwebNetUtxoCompact))
-		startIndex = nextIndex
+			wire.NewMsgGetMwebUtxos(lastHash, addLeaf.start,
+				addLeaf.count, wire.MwebNetUtxoCompact))
 	}
 
 	// We'll also create an additional map that we'll use to
 	// re-order the responses as we get them in.
-	queryResponses := make(map[leafIdx]*wire.MsgMwebUtxos, len(queryMsgs))
+	queryResponses := make(map[uint64]*wire.MsgMwebUtxos, len(queryMsgs))
 
 	batchesCount := len(queryMsgs)
 	if batchesCount == 0 {
 		return
 	}
 
+	log.Infof("Starting to query for mweb utxos from index=%v", addedLeaves[0].start)
 	log.Infof("Attempting to query for %v mwebutxos batches", batchesCount)
 
 	// With the set of messages constructed, we'll now request the batch
@@ -376,7 +408,7 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 	q := mwebUtxosQuery{
 		blockMgr:   b,
 		mwebHeader: mwebHeader,
-		leafset:    leafset,
+		leafset:    newLeafset,
 		msgs:       queryMsgs,
 		utxosChan:  utxosChan,
 	}
@@ -393,7 +425,7 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 	// Keep waiting for more mwebutxos as long as we haven't received an
 	// answer for our last getmwebutxos, and no error is encountered.
 	totalUtxos := 0
-	for {
+	for i := 0; i < len(addedLeaves); {
 		var r *wire.MsgMwebUtxos
 		select {
 		case r = <-utxosChan:
@@ -418,8 +450,9 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 
 		// Find the first and last indices for the mweb utxos
 		// represented by this message.
-		startIndex = leafIdx(r.Utxos[0].LeafIndex)
-		lastIndex := leafIdx(r.Utxos[len(r.Utxos)-1].LeafIndex)
+		startIndex := r.Utxos[0].LeafIndex
+		lastIndex := r.Utxos[len(r.Utxos)-1].LeafIndex
+		curIndex := addedLeaves[i].start
 
 		log.Debugf("Got mwebutxos from index=%v to "+
 			"index=%v, block hash=%v", startIndex,
@@ -446,10 +479,11 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 
 		// Then, we cycle through any cached messages, adding
 		// them to the batch and deleting them from the cache.
-		for {
+		for i < len(addedLeaves) {
 			// If we don't yet have the next response, then
 			// we'll break out so we can wait for the peers
 			// to respond with this message.
+			curIndex = addedLeaves[i].start
 			r, ok := queryResponses[curIndex]
 			if !ok {
 				break
@@ -475,23 +509,14 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 			totalUtxos += len(r.Utxos)
 
 			// Update the next index to write.
-			lastIndex := leafIdx(r.Utxos[len(r.Utxos)-1].LeafIndex)
-			curIndex = leafset.nextUnspent(lastIndex)
-			if curIndex > leafIdx(mwebHeader.OutputMMRSize) {
-				curIndex = leafIdx(mwebHeader.OutputMMRSize)
-			}
-
-			if err := b.cfg.MwebCoins.PutLastIndex(uint64(curIndex)); err != nil {
-				panic(fmt.Sprintf("couldn't write mweb coins index: %v", err))
-			}
+			i++
 		}
+	}
 
-		// If the current index is beyond the end of the leafset,
-		// we are done.
-		if !leafset.contains(curIndex) {
-			log.Infof("Successfully got %v mweb utxos", totalUtxos)
-			break
-		}
+	log.Infof("Successfully got %v mweb utxos", totalUtxos)
+
+	if err := b.cfg.MwebCoins.PutLeafSet(newLeafset, newNumLeaves); err != nil {
+		panic(fmt.Sprintf("couldn't write mweb leafset: %v", err))
 	}
 }
 

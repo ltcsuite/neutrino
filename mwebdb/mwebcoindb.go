@@ -33,9 +33,9 @@ var (
 // CoinDatabase is an interface which represents an object that is capable of
 // storing and retrieving coins according to their corresponding output ID.
 type CoinDatabase interface {
-	// Get and set the last coin index we have synced up to.
-	GetLastIndex() (uint64, error)
-	PutLastIndex(index uint64) error
+	// Get and set the leafset marking the unspent indices.
+	GetLeafSet() (leafset []byte, numLeaves uint64, err error)
+	PutLeafSet(leafset []byte, numLeaves uint64) error
 
 	// PutCoin stores a coin with the given output ID to persistent
 	// storage.
@@ -88,30 +88,40 @@ func New(db walletdb.DB) (*CoinStore, error) {
 	return &CoinStore{db: db}, nil
 }
 
-func (c *CoinStore) GetLastIndex() (index uint64, err error) {
+func (c *CoinStore) GetLeafSet() (leafset []byte, numLeaves uint64, err error) {
 	err = walletdb.View(c.db, func(tx walletdb.ReadTx) error {
 		rootBucket := tx.ReadBucket(rootBucket)
 
-		b := rootBucket.Get([]byte("lastIndex"))
+		leafset = rootBucket.Get([]byte("leafset"))
+		if leafset == nil {
+			return nil
+		}
+
+		b := rootBucket.Get([]byte("numLeaves"))
 		if b == nil {
+			leafset = nil
 			return nil
 		}
 		if len(b) != 8 {
 			return ErrUnexpectedValueLen
 		}
-
-		index = binary.LittleEndian.Uint64(b)
+		numLeaves = binary.LittleEndian.Uint64(b)
 		return nil
 	})
 	return
 }
 
-func (c *CoinStore) PutLastIndex(index uint64) error {
+func (c *CoinStore) PutLeafSet(leafset []byte, numLeaves uint64) error {
 	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
 		rootBucket := tx.ReadWriteBucket(rootBucket)
 
-		b := binary.LittleEndian.AppendUint64(nil, index)
-		return rootBucket.Put([]byte("lastIndex"), b)
+		err := rootBucket.Put([]byte("leafset"), leafset)
+		if err != nil {
+			return err
+		}
+
+		b := binary.LittleEndian.AppendUint64(nil, numLeaves)
+		return rootBucket.Put([]byte("numLeaves"), b)
 	})
 }
 
