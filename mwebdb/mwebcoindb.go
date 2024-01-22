@@ -57,6 +57,9 @@ type CoinDatabase interface {
 	// returned.
 	FetchCoin(*chainhash.Hash) (*wire.MwebOutput, error)
 
+	// FetchLeaves fetches the coins corresponding to the leaves specified.
+	FetchLeaves([]uint64) ([]*wire.MwebNetUtxo, error)
+
 	// PurgeLeaves purges the specified leaves and their associated
 	// coins from persistent storage.
 	PurgeLeaves([]uint64) error
@@ -218,9 +221,6 @@ func (c *CoinStore) FetchCoin(outputId *chainhash.Hash) (*wire.MwebOutput, error
 		if coinBytes == nil {
 			return ErrCoinNotFound
 		}
-		if len(coinBytes) == 0 {
-			return nil
-		}
 
 		coin = new(wire.MwebOutput)
 		return coin.Deserialize(bytes.NewBuffer(coinBytes))
@@ -230,6 +230,48 @@ func (c *CoinStore) FetchCoin(outputId *chainhash.Hash) (*wire.MwebOutput, error
 	}
 
 	return coin, nil
+}
+
+// FetchLeaves fetches the coins corresponding to the leaves specified.
+func (c *CoinStore) FetchLeaves(leaves []uint64) ([]*wire.MwebNetUtxo, error) {
+	var coins []*wire.MwebNetUtxo
+
+	err := walletdb.View(c.db, func(tx walletdb.ReadTx) error {
+		rootBucket := tx.ReadBucket(rootBucket)
+		coinBucket := rootBucket.NestedReadBucket(coinBucket)
+		leafBucket := rootBucket.NestedReadBucket(leafBucket)
+
+		for _, leaf := range leaves {
+			leafIndex := binary.LittleEndian.AppendUint64(nil, leaf)
+			outputId := leafBucket.Get(leafIndex)
+			if outputId == nil {
+				return ErrLeafNotFound
+			}
+
+			coinBytes := coinBucket.Get(outputId)
+			if coinBytes == nil {
+				return ErrCoinNotFound
+			}
+
+			coin := new(wire.MwebOutput)
+			err := coin.Deserialize(bytes.NewBuffer(coinBytes))
+			if err != nil {
+				return err
+			}
+			coins = append(coins, &wire.MwebNetUtxo{
+				LeafIndex: leaf,
+				Output:    coin,
+				OutputId:  (*chainhash.Hash)(outputId),
+			})
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return coins, nil
 }
 
 // PurgeLeaves purges the specified leaves and their associated

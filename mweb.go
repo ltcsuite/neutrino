@@ -345,13 +345,6 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 		oldLeafset[index] == newLeafset[index] {
 		index++
 	}
-	index *= 8
-	if index > oldNumLeaves {
-		index = oldNumLeaves
-	}
-	if index > newNumLeaves {
-		index = newNumLeaves
-	}
 
 	type span struct {
 		start uint64
@@ -366,7 +359,7 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 			addLeaf = span{}
 		}
 	}
-	for ; index < oldNumLeaves || index < newNumLeaves; index++ {
+	for index *= 8; index < oldNumLeaves || index < newNumLeaves; index++ {
 		if oldLeafset.contains(leafIdx(index)) {
 			addLeafSpan()
 			if !newLeafset.contains(leafIdx(index)) {
@@ -503,7 +496,7 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 				panic(fmt.Sprintf("couldn't write mweb coins: %v", err))
 			}
 			for _, cb := range b.mwebUtxosCallbacks {
-				cb(r.Utxos)
+				cb(newLeafset, r.Utxos)
 			}
 			totalUtxos += len(r.Utxos)
 
@@ -610,4 +603,41 @@ func (m *mwebUtxosQuery) handleResponse(req, resp wire.Message,
 		Finished:   true,
 		Progressed: true,
 	}
+}
+
+func (b *blockManager) notifyAddedMwebUtxos(leafSet []byte) error {
+	b.mwebUtxosCallbacksMtx.Lock()
+	defer b.mwebUtxosCallbacksMtx.Unlock()
+
+	dbLeafset, newNumLeaves, err := b.cfg.MwebCoins.GetLeafSet()
+	if err != nil {
+		return err
+	}
+	oldLeafset := leafset(leafSet)
+	newLeafset := leafset(dbLeafset)
+
+	// Skip over common prefix
+	var index uint64
+	for index < uint64(len(oldLeafset)) &&
+		index < uint64(len(newLeafset)) &&
+		oldLeafset[index] == newLeafset[index] {
+		index++
+	}
+
+	var addedLeaves []uint64
+	for index *= 8; index < newNumLeaves; index++ {
+		if !oldLeafset.contains(leafIdx(index)) &&
+			newLeafset.contains(leafIdx(index)) {
+			addedLeaves = append(addedLeaves, index)
+		}
+	}
+
+	utxos, err := b.cfg.MwebCoins.FetchLeaves(addedLeaves)
+	if err != nil {
+		return err
+	}
+	for _, cb := range b.mwebUtxosCallbacks {
+		cb(newLeafset, utxos)
+	}
+	return nil
 }

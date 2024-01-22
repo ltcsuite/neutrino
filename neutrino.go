@@ -1183,8 +1183,15 @@ func (s *ChainService) NotifyMempoolReceived(addrs []ltcutil.Address) {
 
 // RegisterMwebUtxosCallback registers a callback to be fired whenever new mweb utxos
 // are received
-func (s *ChainService) RegisterMwebUtxosCallback(onMwebUtxos func(utxos []*wire.MwebNetUtxo)) {
+func (s *ChainService) RegisterMwebUtxosCallback(
+	onMwebUtxos func(leafset []byte, utxos []*wire.MwebNetUtxo)) {
+
 	s.blockManager.RegisterMwebUtxosCallback(onMwebUtxos)
+}
+
+// Notify of any added mweb utxos since the last snapshot indicated by the leafset.
+func (s *ChainService) NotifyAddedMwebUtxos(leafset []byte) error {
+	return s.blockManager.notifyAddedMwebUtxos(leafset)
 }
 
 // peerHandler is used to handle peer operations such as adding and removing
