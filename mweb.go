@@ -283,6 +283,9 @@ func verifyMwebUtxos(mwebHeader *wire.MwebHeader,
 		for _, peakNodeIdx := range peaks {
 			peakHash := v.calcNodeHash(peakNodeIdx, peakNodeIdx.height())
 			if peakHash == nil {
+				peakHash = v.nextHash(peakNodeIdx)
+			}
+			if peakHash == nil {
 				return false
 			}
 			peakHashes = append(peakHashes, peakHash)
