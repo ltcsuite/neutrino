@@ -23,6 +23,7 @@ import (
 	"github.com/ltcsuite/ltcd/peer"
 	"github.com/ltcsuite/ltcd/wire"
 	"github.com/ltcsuite/ltcwallet/walletdb"
+	"github.com/ltcsuite/ltcwallet/wtxmgr"
 	"github.com/ltcsuite/neutrino/banman"
 	"github.com/ltcsuite/neutrino/blockntfns"
 	"github.com/ltcsuite/neutrino/cache/lru"
@@ -1184,7 +1185,7 @@ func (s *ChainService) NotifyMempoolReceived(addrs []ltcutil.Address) {
 // RegisterMwebUtxosCallback registers a callback to be fired whenever new mweb utxos
 // are received
 func (s *ChainService) RegisterMwebUtxosCallback(
-	onMwebUtxos func(leafset []byte, utxos []*wire.MwebNetUtxo)) {
+	onMwebUtxos func([]byte, []*wire.MwebNetUtxo, *wtxmgr.BlockMeta)) {
 
 	s.blockManager.RegisterMwebUtxosCallback(onMwebUtxos)
 }

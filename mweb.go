@@ -10,6 +10,7 @@ import (
 	"github.com/ltcsuite/ltcd/ltcutil/bloom"
 	"github.com/ltcsuite/ltcd/txscript"
 	"github.com/ltcsuite/ltcd/wire"
+	"github.com/ltcsuite/ltcwallet/wtxmgr"
 	"github.com/ltcsuite/neutrino/banman"
 	"github.com/ltcsuite/neutrino/query"
 	"lukechampine.com/blake3"
@@ -326,10 +327,10 @@ type mwebUtxosQuery struct {
 const maxMwebUtxosPerQuery = 4096
 
 func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
-	newLeafset leafset, lastHeight uint32, lastHash *chainhash.Hash) {
+	newLeafset leafset, lastHeight uint32, lastHeader *wire.BlockHeader) {
 
 	log.Infof("Fetching set of mweb utxos from "+
-		"height=%v, hash=%v", lastHeight, *lastHash)
+		"height=%v, hash=%v", lastHeight, lastHeader.BlockHash())
 
 	newNumLeaves := mwebHeader.OutputMMRSize
 	dbLeafset, oldNumLeaves, err := b.cfg.MwebCoins.GetLeafSet()
@@ -380,8 +381,8 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 	var queryMsgs []wire.Message
 	for _, addLeaf := range addedLeaves {
 		queryMsgs = append(queryMsgs,
-			wire.NewMsgGetMwebUtxos(lastHash, addLeaf.start,
-				addLeaf.count, wire.MwebNetUtxoCompact))
+			wire.NewMsgGetMwebUtxos(lastHeader.BlockHash(),
+				addLeaf.start, addLeaf.count, wire.MwebNetUtxoCompact))
 	}
 
 	// We'll also create an additional map that we'll use to
@@ -495,9 +496,18 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 			if err != nil {
 				panic(fmt.Sprintf("couldn't write mweb coins: %v", err))
 			}
-			for _, cb := range b.mwebUtxosCallbacks {
-				cb(newLeafset, r.Utxos)
+
+			block := &wtxmgr.BlockMeta{
+				Block: wtxmgr.Block{
+					Hash:   lastHeader.BlockHash(),
+					Height: int32(lastHeight),
+				},
+				Time: lastHeader.Timestamp,
 			}
+			for _, cb := range b.mwebUtxosCallbacks {
+				cb(newLeafset, r.Utxos, block)
+			}
+
 			totalUtxos += len(r.Utxos)
 
 			// Update the next index to write.
@@ -636,8 +646,22 @@ func (b *blockManager) notifyAddedMwebUtxos(leafSet []byte) error {
 	if err != nil {
 		return err
 	}
-	for _, cb := range b.mwebUtxosCallbacks {
-		cb(newLeafset, utxos)
+
+	header, height, err := b.cfg.BlockHeaders.ChainTip()
+	if err != nil {
+		return err
 	}
+
+	block := &wtxmgr.BlockMeta{
+		Block: wtxmgr.Block{
+			Hash:   header.BlockHash(),
+			Height: int32(height),
+		},
+		Time: header.Timestamp,
+	}
+	for _, cb := range b.mwebUtxosCallbacks {
+		cb(newLeafset, utxos, block)
+	}
+
 	return nil
 }
