@@ -324,8 +324,6 @@ type mwebUtxosQuery struct {
 	utxosChan  chan *wire.MsgMwebUtxos
 }
 
-const maxMwebUtxosPerQuery = 4096
-
 func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 	newLeafset leafset, lastHeight uint32, lastHeader *wire.BlockHeader) {
 
@@ -371,7 +369,7 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 				addLeaf.start = index
 			}
 			addLeaf.count++
-			if addLeaf.count == maxMwebUtxosPerQuery {
+			if addLeaf.count == wire.MaxMwebUtxosPerQuery {
 				addLeafSpan()
 			}
 		}
