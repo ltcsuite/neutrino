@@ -522,13 +522,13 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 func (b *blockManager) purgeSpentMwebTxos(newLeafset leafset,
 	newNumLeaves uint64, removedLeaves []uint64) {
 
-	if err := b.cfg.MwebCoins.PutLeafSet(newLeafset, newNumLeaves); err != nil {
-		panic(fmt.Sprintf("couldn't write mweb leafset: %v", err))
+	if len(removedLeaves) > 0 {
+		log.Infof("Purging %v spent mweb txos from db", len(removedLeaves))
 	}
 
-	log.Infof("Purging %v spent mweb txos from db", len(removedLeaves))
-
-	if err := b.cfg.MwebCoins.PurgeLeaves(removedLeaves); err != nil {
+	err := b.cfg.MwebCoins.PutLeafSetAndPurge(
+		newLeafset, newNumLeaves, removedLeaves)
+	if err != nil {
 		panic(fmt.Sprintf("couldn't purge mweb txos: %v", err))
 	}
 }

@@ -40,9 +40,13 @@ var (
 // CoinDatabase is an interface which represents an object that is capable of
 // storing and retrieving coins according to their corresponding output ID.
 type CoinDatabase interface {
-	// Get and set the leafset marking the unspent indices.
+	// Get the leafset marking the unspent indices.
 	GetLeafSet() (leafset []byte, numLeaves uint64, err error)
-	PutLeafSet(leafset []byte, numLeaves uint64) error
+
+	// Set the leafset and purge the specified leaves and their associated
+	// coins from persistent storage.
+	PutLeafSetAndPurge(leafset []byte, numLeaves uint64,
+		removedLeaves []uint64) error
 
 	// PutCoin stores a coin with the given output ID to persistent
 	// storage.
@@ -59,10 +63,6 @@ type CoinDatabase interface {
 
 	// FetchLeaves fetches the coins corresponding to the leaves specified.
 	FetchLeaves([]uint64) ([]*wire.MwebNetUtxo, error)
-
-	// PurgeLeaves purges the specified leaves and their associated
-	// coins from persistent storage.
-	PurgeLeaves([]uint64) error
 
 	// PurgeCoins purges all coins from persistent storage.
 	PurgeCoins() error
@@ -106,6 +106,9 @@ func New(db walletdb.DB) (*CoinStore, error) {
 	return &CoinStore{db: db}, nil
 }
 
+// Get the leafset marking the unspent indices.
+//
+// NOTE: This method is a part of the CoinDatabase interface.
 func (c *CoinStore) GetLeafSet() (leafset []byte, numLeaves uint64, err error) {
 	err = walletdb.View(c.db, func(tx walletdb.ReadTx) error {
 		rootBucket := tx.ReadBucket(rootBucket)
@@ -129,9 +132,17 @@ func (c *CoinStore) GetLeafSet() (leafset []byte, numLeaves uint64, err error) {
 	return
 }
 
-func (c *CoinStore) PutLeafSet(leafset []byte, numLeaves uint64) error {
+// Set the leafset and purge the specified leaves and their associated
+// coins from persistent storage.
+//
+// NOTE: This method is a part of the CoinDatabase interface.
+func (c *CoinStore) PutLeafSetAndPurge(leafset []byte,
+	numLeaves uint64, removedLeaves []uint64) error {
+
 	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
 		rootBucket := tx.ReadWriteBucket(rootBucket)
+		coinBucket := rootBucket.NestedReadWriteBucket(coinBucket)
+		leafBucket := rootBucket.NestedReadWriteBucket(leafBucket)
 
 		err := rootBucket.Put([]byte("leafset"), leafset)
 		if err != nil {
@@ -139,7 +150,26 @@ func (c *CoinStore) PutLeafSet(leafset []byte, numLeaves uint64) error {
 		}
 
 		b := binary.LittleEndian.AppendUint64(nil, numLeaves)
-		return rootBucket.Put([]byte("numLeaves"), b)
+		err = rootBucket.Put([]byte("numLeaves"), b)
+		if err != nil {
+			return err
+		}
+
+		for _, leafIndex := range removedLeaves {
+			leafIndex := binary.LittleEndian.AppendUint64(nil, leafIndex)
+			outputId := leafBucket.Get(leafIndex)
+			if outputId == nil {
+				return ErrLeafNotFound
+			}
+			if err := coinBucket.Delete(outputId); err != nil {
+				return err
+			}
+			if err := leafBucket.Delete(leafIndex); err != nil {
+				return err
+			}
+		}
+
+		return nil
 	})
 }
 
@@ -271,34 +301,6 @@ func (c *CoinStore) FetchLeaves(leaves []uint64) ([]*wire.MwebNetUtxo, error) {
 	}
 
 	return coins, nil
-}
-
-// PurgeLeaves purges the specified leaves and their associated
-// coins from persistent storage.
-//
-// NOTE: This method is a part of the CoinDatabase interface.
-func (c *CoinStore) PurgeLeaves(leaves []uint64) error {
-	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
-		rootBucket := tx.ReadWriteBucket(rootBucket)
-		coinBucket := rootBucket.NestedReadWriteBucket(coinBucket)
-		leafBucket := rootBucket.NestedReadWriteBucket(leafBucket)
-
-		for _, leafIndex := range leaves {
-			leafIndex := binary.LittleEndian.AppendUint64(nil, leafIndex)
-			outputId := leafBucket.Get(leafIndex)
-			if outputId == nil {
-				return ErrLeafNotFound
-			}
-			if err := coinBucket.Delete(outputId); err != nil {
-				return err
-			}
-			if err := leafBucket.Delete(leafIndex); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
 }
 
 // PurgeCoins purges all coins from persistent storage.
