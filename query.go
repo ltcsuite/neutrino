@@ -58,7 +58,7 @@ var (
 
 	// QueryEncoding specifies the default encoding (witness or not) for
 	// `getdata` and other similar messages.
-	QueryEncoding = wire.WitnessEncoding
+	QueryEncoding = wire.LatestEncoding
 
 	// ErrFilterFetchFailed is returned in case fetching a compact filter
 	// fails.
