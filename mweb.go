@@ -389,6 +389,7 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 
 	batchesCount := len(queryMsgs)
 	if batchesCount == 0 {
+		b.purgeSpentMwebTxos(newLeafset, newNumLeaves, removedLeaves)
 		return
 	}
 
@@ -514,6 +515,12 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 	}
 
 	log.Infof("Successfully got %v mweb utxos", totalUtxos)
+
+	b.purgeSpentMwebTxos(newLeafset, newNumLeaves, removedLeaves)
+}
+
+func (b *blockManager) purgeSpentMwebTxos(newLeafset leafset,
+	newNumLeaves uint64, removedLeaves []uint64) {
 
 	if err := b.cfg.MwebCoins.PutLeafSet(newLeafset, newNumLeaves); err != nil {
 		panic(fmt.Sprintf("couldn't write mweb leafset: %v", err))
