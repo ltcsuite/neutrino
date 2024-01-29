@@ -43,14 +43,10 @@ type CoinDatabase interface {
 	// Get the leafset marking the unspent indices.
 	GetLeafSet() (leafset []byte, numLeaves uint64, err error)
 
-	// Set the leafset and purge the specified leaves and their associated
-	// coins from persistent storage.
+	// Set the leafset and purge the specified leaves and their
+	// associated coins from persistent storage.
 	PutLeafSetAndPurge(leafset []byte, numLeaves uint64,
 		removedLeaves []uint64) error
-
-	// PutCoin stores a coin with the given output ID to persistent
-	// storage.
-	PutCoin(*chainhash.Hash, *wire.MwebNetUtxo) error
 
 	// PutCoins stores coins to persistent storage.
 	PutCoins([]*wire.MwebNetUtxo) error
@@ -161,46 +157,15 @@ func (c *CoinStore) PutLeafSetAndPurge(leafset []byte,
 			if outputId == nil {
 				return ErrLeafNotFound
 			}
-			if err := coinBucket.Delete(outputId); err != nil {
+			if err = coinBucket.Delete(outputId); err != nil {
 				return err
 			}
-			if err := leafBucket.Delete(leafIndex); err != nil {
+			if err = leafBucket.Delete(leafIndex); err != nil {
 				return err
 			}
 		}
 
 		return nil
-	})
-}
-
-// PutCoin stores a coin with the given output ID to persistent
-// storage.
-//
-// NOTE: This method is a part of the CoinDatabase interface.
-func (c *CoinStore) PutCoin(outputId *chainhash.Hash,
-	coin *wire.MwebNetUtxo) error {
-
-	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
-		rootBucket := tx.ReadWriteBucket(rootBucket)
-		coinBucket := rootBucket.NestedReadWriteBucket(coinBucket)
-		leafBucket := rootBucket.NestedReadWriteBucket(leafBucket)
-
-		if coin == nil {
-			return coinBucket.Delete(outputId[:])
-		}
-
-		var buf bytes.Buffer
-		if err := coin.Output.Serialize(&buf); err != nil {
-			return err
-		}
-
-		err := coinBucket.Put(coin.OutputId[:], buf.Bytes())
-		if err != nil {
-			return err
-		}
-
-		leafIndex := binary.LittleEndian.AppendUint64(nil, coin.LeafIndex)
-		return leafBucket.Put(leafIndex, coin.OutputId[:])
 	})
 }
 
@@ -215,11 +180,15 @@ func (c *CoinStore) PutCoins(coins []*wire.MwebNetUtxo) error {
 
 		for _, coin := range coins {
 			var buf bytes.Buffer
-			if err := coin.Output.Serialize(&buf); err != nil {
+			err := binary.Write(&buf, binary.LittleEndian, coin.Height)
+			if err != nil {
+				return err
+			}
+			if err = coin.Output.Serialize(&buf); err != nil {
 				return err
 			}
 
-			err := coinBucket.Put(coin.OutputId[:], buf.Bytes())
+			err = coinBucket.Put(coin.OutputId[:], buf.Bytes())
 			if err != nil {
 				return err
 			}
@@ -240,7 +209,7 @@ func (c *CoinStore) PutCoins(coins []*wire.MwebNetUtxo) error {
 //
 // NOTE: This method is a part of the CoinDatabase interface.
 func (c *CoinStore) FetchCoin(outputId *chainhash.Hash) (*wire.MwebOutput, error) {
-	var coin *wire.MwebOutput
+	var coin wire.MwebOutput
 
 	err := walletdb.View(c.db, func(tx walletdb.ReadTx) error {
 		rootBucket := tx.ReadBucket(rootBucket)
@@ -250,18 +219,25 @@ func (c *CoinStore) FetchCoin(outputId *chainhash.Hash) (*wire.MwebOutput, error
 		if coinBytes == nil {
 			return ErrCoinNotFound
 		}
+		buf := bytes.NewBuffer(coinBytes)
 
-		coin = new(wire.MwebOutput)
-		return coin.Deserialize(bytes.NewBuffer(coinBytes))
+		var height int32
+		err := binary.Read(buf, binary.LittleEndian, &height)
+		if err != nil {
+			return err
+		}
+		return coin.Deserialize(buf)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return coin, nil
+	return &coin, nil
 }
 
 // FetchLeaves fetches the coins corresponding to the leaves specified.
+//
+// NOTE: This method is a part of the CoinDatabase interface.
 func (c *CoinStore) FetchLeaves(leaves []uint64) ([]*wire.MwebNetUtxo, error) {
 	var coins []*wire.MwebNetUtxo
 
@@ -281,17 +257,22 @@ func (c *CoinStore) FetchLeaves(leaves []uint64) ([]*wire.MwebNetUtxo, error) {
 			if coinBytes == nil {
 				return ErrCoinNotFound
 			}
+			buf := bytes.NewBuffer(coinBytes)
 
-			coin := new(wire.MwebOutput)
-			err := coin.Deserialize(bytes.NewBuffer(coinBytes))
+			coin := &wire.MwebNetUtxo{
+				LeafIndex: leaf,
+				Output:    &wire.MwebOutput{},
+				OutputId:  (*chainhash.Hash)(outputId),
+			}
+			coins = append(coins, coin)
+
+			err := binary.Read(buf, binary.LittleEndian, &coin.Height)
 			if err != nil {
 				return err
 			}
-			coins = append(coins, &wire.MwebNetUtxo{
-				LeafIndex: leaf,
-				Output:    coin,
-				OutputId:  (*chainhash.Hash)(outputId),
-			})
+			if err = coin.Output.Deserialize(buf); err != nil {
+				return err
+			}
 		}
 
 		return nil

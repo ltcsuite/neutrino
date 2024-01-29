@@ -19,7 +19,6 @@ import (
 	"github.com/ltcsuite/ltcd/ltcutil/gcs"
 	"github.com/ltcsuite/ltcd/ltcutil/gcs/builder"
 	"github.com/ltcsuite/ltcd/wire"
-	"github.com/ltcsuite/ltcwallet/wtxmgr"
 	"github.com/ltcsuite/neutrino/banman"
 	"github.com/ltcsuite/neutrino/blockntfns"
 	"github.com/ltcsuite/neutrino/chainsync"
@@ -224,7 +223,7 @@ type blockManager struct { // nolint:maligned
 	requestedTxns map[chainhash.Hash]struct{}
 
 	mwebUtxosCallbacksMtx sync.RWMutex
-	mwebUtxosCallbacks    []func([]byte, []*wire.MwebNetUtxo, *wtxmgr.BlockMeta)
+	mwebUtxosCallbacks    []func([]byte, []*wire.MwebNetUtxo)
 }
 
 // newBlockManager returns a new bitcoin block manager.  Use Start to begin
@@ -549,7 +548,7 @@ func (b *blockManager) mwebHandler() {
 
 		// Get all the mweb utxos at this height.
 		b.getMwebUtxos(&mwebHeader.MwebHeader,
-			mwebLeafset.Leafset, lastHeight, lastHeader)
+			mwebLeafset.Leafset, lastHeight, &lastHash)
 
 		// Now we check the headers again. If the block headers are not yet
 		// current, then we go back to the loop waiting for them to finish.
@@ -3244,7 +3243,7 @@ func (l *lightHeaderCtx) RelativeAncestorCtx(
 // RegisterMwebUtxosCallback will register a callback that will fire when
 // new mweb utxos are received.
 func (b *blockManager) RegisterMwebUtxosCallback(
-	onMwebUtxos func([]byte, []*wire.MwebNetUtxo, *wtxmgr.BlockMeta)) {
+	onMwebUtxos func([]byte, []*wire.MwebNetUtxo)) {
 
 	b.mwebUtxosCallbacksMtx.Lock()
 	defer b.mwebUtxosCallbacksMtx.Unlock()

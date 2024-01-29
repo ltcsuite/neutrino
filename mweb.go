@@ -10,7 +10,6 @@ import (
 	"github.com/ltcsuite/ltcd/ltcutil/bloom"
 	"github.com/ltcsuite/ltcd/txscript"
 	"github.com/ltcsuite/ltcd/wire"
-	"github.com/ltcsuite/ltcwallet/wtxmgr"
 	"github.com/ltcsuite/neutrino/banman"
 	"github.com/ltcsuite/neutrino/query"
 	"lukechampine.com/blake3"
@@ -325,10 +324,10 @@ type mwebUtxosQuery struct {
 }
 
 func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
-	newLeafset leafset, lastHeight uint32, lastHeader *wire.BlockHeader) {
+	newLeafset leafset, lastHeight uint32, lastHash *chainhash.Hash) {
 
 	log.Infof("Fetching set of mweb utxos from "+
-		"height=%v, hash=%v", lastHeight, lastHeader.BlockHash())
+		"height=%v, hash=%v", lastHeight, *lastHash)
 
 	newNumLeaves := mwebHeader.OutputMMRSize
 	dbLeafset, oldNumLeaves, err := b.cfg.MwebCoins.GetLeafSet()
@@ -379,8 +378,8 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 	var queryMsgs []wire.Message
 	for _, addLeaf := range addedLeaves {
 		queryMsgs = append(queryMsgs,
-			wire.NewMsgGetMwebUtxos(lastHeader.BlockHash(),
-				addLeaf.start, addLeaf.count, wire.MwebNetUtxoCompact))
+			wire.NewMsgGetMwebUtxos(*lastHash, addLeaf.start,
+				addLeaf.count, wire.MwebNetUtxoCompact))
 	}
 
 	// We'll also create an additional map that we'll use to
@@ -496,15 +495,8 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 				panic(fmt.Sprintf("couldn't write mweb coins: %v", err))
 			}
 
-			block := &wtxmgr.BlockMeta{
-				Block: wtxmgr.Block{
-					Hash:   lastHeader.BlockHash(),
-					Height: int32(lastHeight),
-				},
-				Time: lastHeader.Timestamp,
-			}
 			for _, cb := range b.mwebUtxosCallbacks {
-				cb(newLeafset, r.Utxos, block)
+				cb(newLeafset, r.Utxos)
 			}
 
 			totalUtxos += len(r.Utxos)
@@ -652,20 +644,8 @@ func (b *blockManager) notifyAddedMwebUtxos(leafSet []byte) error {
 		return err
 	}
 
-	header, height, err := b.cfg.BlockHeaders.ChainTip()
-	if err != nil {
-		return err
-	}
-
-	block := &wtxmgr.BlockMeta{
-		Block: wtxmgr.Block{
-			Hash:   header.BlockHash(),
-			Height: int32(height),
-		},
-		Time: header.Timestamp,
-	}
 	for _, cb := range b.mwebUtxosCallbacks {
-		cb(newLeafset, utxos, block)
+		cb(newLeafset, utxos)
 	}
 
 	return nil
