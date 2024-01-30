@@ -575,7 +575,7 @@ func (b *blockManager) mwebHandler() {
 
 		// We'll wait until the header tip has advanced.
 		b.newHeadersSignal.L.Lock()
-		for lastHeight == b.headerTip {
+		for lastHeight >= b.headerTip {
 			// We'll wait here until we're woken up by the
 			// broadcast signal.
 			b.newHeadersSignal.Wait()
