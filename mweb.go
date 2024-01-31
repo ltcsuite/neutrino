@@ -386,6 +386,9 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 	// re-order the responses as we get them in.
 	queryResponses := make(map[uint64]*wire.MsgMwebUtxos, len(queryMsgs))
 
+	b.mwebUtxosCallbacksMtx.Lock()
+	defer b.mwebUtxosCallbacksMtx.Unlock()
+
 	batchesCount := len(queryMsgs)
 	if batchesCount == 0 {
 		b.purgeSpentMwebTxos(newLeafset, newNumLeaves, removedLeaves)
@@ -413,9 +416,6 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 	errChan := b.cfg.QueryDispatcher.Query(
 		q.requests(), query.Cancel(b.quit),
 	)
-
-	b.mwebUtxosCallbacksMtx.Lock()
-	defer b.mwebUtxosCallbacksMtx.Unlock()
 
 	// Keep waiting for more mwebutxos as long as we haven't received an
 	// answer for our last getmwebutxos, and no error is encountered.
@@ -496,7 +496,7 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 			}
 
 			for _, cb := range b.mwebUtxosCallbacks {
-				cb(newLeafset, r.Utxos)
+				cb(nil, r.Utxos)
 			}
 
 			totalUtxos += len(r.Utxos)
@@ -522,6 +522,10 @@ func (b *blockManager) purgeSpentMwebTxos(newLeafset leafset,
 		newLeafset, newNumLeaves, removedLeaves)
 	if err != nil {
 		panic(fmt.Sprintf("couldn't purge mweb txos: %v", err))
+	}
+
+	for _, cb := range b.mwebUtxosCallbacks {
+		cb(newLeafset, nil)
 	}
 }
 
