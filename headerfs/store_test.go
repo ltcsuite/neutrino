@@ -11,15 +11,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/ltcsuite/ltcd/chaincfg"
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
 	"github.com/ltcsuite/ltcd/wire"
 	"github.com/ltcsuite/ltcwallet/walletdb"
-	"github.com/davecgh/go-spew/spew"
 )
 
 func createTestBlockHeaderStore() (func(), walletdb.DB, string,
 	*blockHeaderStore, error) {
+
 	tempDir, err := ioutil.TempDir("", "store_test")
 	if err != nil {
 		return nil, nil, "", nil, err

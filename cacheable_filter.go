@@ -1,4 +1,4 @@
-package cache
+package neutrino
 
 import (
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"

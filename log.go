@@ -8,6 +8,8 @@ import (
 	"github.com/ltcsuite/ltcd/peer"
 	"github.com/ltcsuite/ltcd/txscript"
 	"github.com/ltcsuite/neutrino/blockntfns"
+	"github.com/ltcsuite/neutrino/chanutils"
+	"github.com/ltcsuite/neutrino/filterdb"
 	"github.com/ltcsuite/neutrino/pushtx"
 	"github.com/ltcsuite/neutrino/query"
 )
@@ -41,4 +43,6 @@ func UseLogger(logger btclog.Logger) {
 	pushtx.UseLogger(logger)
 	connmgr.UseLogger(logger)
 	query.UseLogger(logger)
+	filterdb.UseLogger(logger)
+	chanutils.UseLogger(logger)
 }

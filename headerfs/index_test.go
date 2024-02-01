@@ -15,7 +15,7 @@ import (
 	_ "github.com/ltcsuite/ltcwallet/walletdb/bdb"
 )
 
-func createTestIndex() (func(), *headerIndex, error) {
+func createTestIndex(t testing.TB) (func(), *headerIndex, error) {
 	tempDir, err := ioutil.TempDir("", "neutrino")
 	if err != nil {
 		return nil, nil, err
@@ -31,7 +31,7 @@ func createTestIndex() (func(), *headerIndex, error) {
 	cleanUp := func() {
 		_ = db.Close()
 		fi, _ := os.Stat(tempDir + "/test.db")
-		fmt.Printf("DB file size at cleanup: %d bytes\n", fi.Size())
+		t.Logf("DB file size at cleanup: %d bytes\n", fi.Size())
 		_ = os.RemoveAll(tempDir)
 	}
 
@@ -44,13 +44,13 @@ func createTestIndex() (func(), *headerIndex, error) {
 }
 
 func TestAddHeadersIndexRetrieve(t *testing.T) {
-	cleanUp, hIndex, err := createTestIndex()
+	cleanUp, hIndex, err := createTestIndex(t)
 	defer cleanUp()
 	if err != nil {
 		t.Fatalf("unable to create test db: %v", err)
 	}
 
-	// First, we'll create a a series of random headers that we'll use to
+	// First, we'll create a series of random headers that we'll use to
 	// write into the database.
 	const numHeaders = 100
 	headerEntries, headerIndex, err := writeRandomBatch(hIndex, numHeaders)
@@ -115,7 +115,7 @@ func TestAddHeadersIndexRetrieve(t *testing.T) {
 // location in the bbolt database for reduced memory consumption don't impact
 // existing users that already have entries in their database.
 func TestHeaderStorageFallback(t *testing.T) {
-	cleanUp, hIndex, err := createTestIndex()
+	cleanUp, hIndex, err := createTestIndex(t)
 	if err != nil {
 		t.Fatalf("unable to create test db: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestHeaderStorageFallback(t *testing.T) {
 		t.Fatalf("error writing random batch with old data: %v", err)
 	}
 
-	// Next, we'll create a a series of random headers that we'll use to
+	// Next, we'll create a series of random headers that we'll use to
 	// write into the database through the normal interface. This means they
 	// will be written to the new sub buckets.
 	newHeaderEntries, _, err := writeRandomBatch(hIndex, numHeaders)
@@ -238,7 +238,7 @@ func BenchmarkWriteHeadersSmallBatch(b *testing.B) {
 		numBatches = 5000
 	)
 	for n := 0; n < b.N; n++ {
-		cleanUp, hIndex, err := createTestIndex()
+		cleanUp, hIndex, err := createTestIndex(b)
 		if err != nil {
 			b.Fatalf("unable to create test db: %v", err)
 		}
@@ -262,7 +262,7 @@ func BenchmarkWriteHeadersMediumBatch(b *testing.B) {
 		numBatches = 250
 	)
 	for n := 0; n < b.N; n++ {
-		cleanUp, hIndex, err := createTestIndex()
+		cleanUp, hIndex, err := createTestIndex(b)
 		if err != nil {
 			b.Fatalf("unable to create test db: %v", err)
 		}
@@ -286,7 +286,7 @@ func BenchmarkWriteHeadersLargeBatch(b *testing.B) {
 		numBatches = 50
 	)
 	for n := 0; n < b.N; n++ {
-		cleanUp, hIndex, err := createTestIndex()
+		cleanUp, hIndex, err := createTestIndex(b)
 		if err != nil {
 			b.Fatalf("unable to create test db: %v", err)
 		}
@@ -306,7 +306,7 @@ func BenchmarkWriteHeadersLargeBatch(b *testing.B) {
 // index with a hash.
 func BenchmarkHeightLookupLatency(b *testing.B) {
 	// Start by creating an index with 10k headers.
-	cleanUp, hIndex, err := createTestIndex()
+	cleanUp, hIndex, err := createTestIndex(b)
 	if err != nil {
 		b.Fatalf("unable to create test db: %v", err)
 	}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/ltcsuite/neutrino/banman"
 	"github.com/ltcsuite/neutrino/blockntfns"
 	"github.com/ltcsuite/neutrino/cache/lru"
+	"github.com/ltcsuite/neutrino/chanutils"
 	"github.com/ltcsuite/neutrino/filterdb"
 	"github.com/ltcsuite/neutrino/headerfs"
 	"github.com/ltcsuite/neutrino/pushtx"
@@ -74,7 +76,7 @@ var (
 	// DefaultFilterCacheSize is the size (in bytes) of filters neutrino
 	// will keep in memory if no size is specified in the neutrino.Config.
 	// Since we utilize the cache during batch filter fetching, it is
-	// beneficial if it is able to to keep a whole batch. The current batch
+	// beneficial if it is able to keep a whole batch. The current batch
 	// size is 1000, so we default to 30 MB, which can fit about 1450 to
 	// 2300 mainnet filters.
 	DefaultFilterCacheSize uint64 = 3120 * 10 * 1000
@@ -164,7 +166,7 @@ type ServerPeer struct {
 	connReq        *connmgr.ConnReq
 	server         *ChainService
 	persistent     bool
-	knownAddresses map[string]struct{}
+	knownAddresses *lru.Cache[string, *cachedAddr]
 	quit           chan struct{}
 
 	// The following map of subcribers is used to subscribe to messages
@@ -180,13 +182,13 @@ type ServerPeer struct {
 	mtxSubscribers   sync.RWMutex
 }
 
-// newServerPeer returns a new ServerPeer instance. The peer needs to be set by
+// NewServerPeer returns a new ServerPeer instance. The peer needs to be set by
 // the caller.
-func newServerPeer(s *ChainService, isPersistent bool) *ServerPeer {
+func NewServerPeer(s *ChainService, isPersistent bool) *ServerPeer {
 	return &ServerPeer{
 		server:           s,
 		persistent:       isPersistent,
-		knownAddresses:   make(map[string]struct{}),
+		knownAddresses:   lru.NewCache[string, *cachedAddr](5000),
 		quit:             make(chan struct{}),
 		recvSubscribers:  make(map[spMsgSubscription]struct{}),
 		recvSubscribers2: make(map[msgSubscription]struct{}),
@@ -206,9 +208,14 @@ func (sp *ServerPeer) newestBlock() (*chainhash.Hash, int32, error) {
 
 // addKnownAddresses adds the given addresses to the set of known addresses to
 // the peer to prevent sending duplicate addresses.
-func (sp *ServerPeer) addKnownAddresses(addresses []*wire.NetAddress) {
+func (sp *ServerPeer) addKnownAddresses(addresses []*wire.NetAddressV2) {
 	for _, na := range addresses {
-		sp.knownAddresses[addrmgr.NetAddressKey(na)] = struct{}{}
+		_, err := sp.knownAddresses.Put(
+			addrmgr.NetAddressKey(na), &cachedAddr{},
+		)
+		if err != nil {
+			log.Debugf("Could not store known addresses: %v", err)
+		}
 	}
 }
 
@@ -344,7 +351,7 @@ func (sp *ServerPeer) OnAddr(_ *peer.Peer, msg *wire.MsgAddr) {
 		return
 	}
 
-	addrsSupportingServices := make([]*wire.NetAddress, 0, len(msg.AddrList))
+	addrs := make([]*wire.NetAddressV2, 0, len(msg.AddrList))
 	for _, na := range msg.AddrList {
 		// Don't add more address if we're disconnecting.
 		if !sp.Connected() {
@@ -356,7 +363,7 @@ func (sp *ServerPeer) OnAddr(_ *peer.Peer, msg *wire.MsgAddr) {
 			continue
 		}
 
-		// Set the timestamp to 5 days ago if it's more than 24 hours
+		// Set the timestamp to 5 days ago if it's more than 10 minutes
 		// in the future so this address is one of the first to be
 		// removed when space is needed.
 		now := time.Now()
@@ -364,25 +371,80 @@ func (sp *ServerPeer) OnAddr(_ *peer.Peer, msg *wire.MsgAddr) {
 			na.Timestamp = now.Add(-1 * time.Hour * 24 * 5)
 		}
 
-		addrsSupportingServices = append(addrsSupportingServices, na)
-
+		// Convert the wire.NetAddress to wire.NetAddressV2 since that
+		// is what is used by the addrmgr.
+		currentNa := wire.NetAddressV2FromBytes(
+			na.Timestamp, na.Services, na.IP, na.Port,
+		)
+		addrs = append(addrs, currentNa)
 	}
 
 	// Ignore any addr messages if none of them contained our required
 	// services.
-	if len(addrsSupportingServices) == 0 {
+	if len(addrs) == 0 {
 		return
 	}
 
-	// Add address to known addresses for this peer.
-	sp.addKnownAddresses(addrsSupportingServices)
+	// Add addresses to the set of known addresses for this peer.
+	sp.addKnownAddresses(addrs)
 
 	// Add addresses to server address manager.  The address manager handles
 	// the details of things such as preventing duplicate addresses, max
 	// addresses, and last seen updates.
 	// XXX bitcoind gives a 2 hour time penalty here, do we want to do the
 	// same?
-	sp.server.addrManager.AddAddresses(addrsSupportingServices, sp.NA())
+	sp.server.addrManager.AddAddresses(addrs, sp.NA())
+}
+
+// OnAddrV2 is called when a peer receives an AddrV2 message from its peer.
+func (sp *ServerPeer) OnAddrV2(_ *peer.Peer, msg *wire.MsgAddrV2) {
+	// Ignore addresses when running on a private development network for
+	// the same reason that OnAddr does.
+	if isDevNetwork(sp.server.chainParams.Net) {
+		return
+	}
+
+	// An empty AddrV2 message is invalid.
+	if len(msg.AddrList) == 0 {
+		log.Errorf("Command [%s] from %s does not contain any "+
+			"addresses", msg.Command(), sp.Addr())
+		sp.Disconnect()
+		return
+	}
+
+	addrs := make([]*wire.NetAddressV2, 0, len(msg.AddrList))
+	for _, na := range msg.AddrList {
+		// Don't add more addresses if we're disconnecting.
+		if !sp.Connected() {
+			return
+		}
+
+		// Skip any that don't advertise our required services.
+		if na.Services&RequiredServices != RequiredServices {
+			continue
+		}
+
+		// Set the timestamp to 5 days ago if it's more than 10 minutes
+		// in the future so this address is one of the first to be
+		// removed when space is needed.
+		now := time.Now()
+		if na.Timestamp.After(now.Add(time.Minute * 10)) {
+			na.Timestamp = now.Add(-1 * time.Hour * 24 * 5)
+		}
+		addrs = append(addrs, na)
+	}
+
+	// Ignore addrv2 message if no addresses contained our required
+	// services.
+	if len(addrs) == 0 {
+		return
+	}
+
+	// Add the addresses to the set of known addresses for this peer.
+	sp.addKnownAddresses(addrs)
+
+	// Add addresses to the address manager.
+	sp.server.addrManager.AddAddresses(addrs, sp.NA())
 }
 
 // OnRead is invoked when a peer receives a message and it is used to update
@@ -527,7 +589,7 @@ type Config struct {
 
 	// BlockCache is an LRU block cache. If none is provided then the a new
 	// one will be instantiated.
-	BlockCache *lru.Cache
+	BlockCache *lru.Cache[wire.InvVect, *CacheableBlock]
 
 	// BlockCacheSize indicates the size (in bytes) of blocks the block
 	// cache will hold in memory at most. If a BlockCache is provided then
@@ -579,13 +641,8 @@ type ChainService struct { // nolint:maligned
 	RegFilterHeaders *headerfs.FilterHeaderStore
 	persistToDisk    bool
 
-	FilterCache *lru.Cache
-	BlockCache  *lru.Cache
-
-	// queryPeers will be called to send messages to one or more peers,
-	// expecting a response.
-	queryPeers func(wire.Message, func(*ServerPeer, wire.Message,
-		chan<- struct{}), ...QueryOption)
+	FilterCache *lru.Cache[FilterCacheKey, *CacheableFilter]
+	BlockCache  *lru.Cache[wire.InvVect, *CacheableBlock]
 
 	chainParams          chaincfg.Params
 	addrManager          *addrmgr.AddrManager
@@ -604,7 +661,8 @@ type ChainService struct { // nolint:maligned
 	utxoScanner          *UtxoScanner
 	broadcaster          *pushtx.Broadcaster
 	banStore             banman.Store
-	workManager          *query.WorkManager
+	workManager          query.WorkManager
+	filterBatchWriter    *chanutils.BatchWriter[*filterdb.FilterData]
 
 	// peerSubscribers is a slice of active peer subscriptions, that we
 	// will notify each time a new peer is connected.
@@ -680,31 +738,40 @@ func NewChainService(cfg Config) (*ChainService, error) {
 		persistToDisk:     cfg.PersistToDisk,
 		broadcastTimeout:  cfg.BroadcastTimeout,
 	}
-	s.workManager = query.New(&query.Config{
+	s.workManager = query.NewWorkManager(&query.Config{
 		ConnectedPeers: s.ConnectedPeers,
 		NewWorker:      query.NewWorker,
 		Ranking:        query.NewPeerRanking(),
 	})
 
-	// We set the queryPeers method to point to queryChainServicePeers,
-	// passing a reference to the newly created ChainService.
-	s.queryPeers = func(msg wire.Message, f func(*ServerPeer,
-		wire.Message, chan<- struct{}), qo ...QueryOption) {
-		queryChainServicePeers(&s, msg, f, qo...)
-	}
-
 	var err error
-
 	s.FilterDB, err = filterdb.New(cfg.Database, cfg.ChainParams)
 	if err != nil {
 		return nil, err
+	}
+
+	if s.persistToDisk {
+		cfg := &chanutils.BatchWriterConfig[*filterdb.FilterData]{
+			QueueBufferSize:        chanutils.DefaultQueueSize,
+			MaxBatch:               1000,
+			DBWritesTickerDuration: time.Millisecond * 500,
+			PutItems:               s.FilterDB.PutFilters,
+		}
+
+		batchWriter := chanutils.NewBatchWriter[*filterdb.FilterData](
+			cfg,
+		)
+
+		s.filterBatchWriter = batchWriter
 	}
 
 	filterCacheSize := DefaultFilterCacheSize
 	if cfg.FilterCacheSize != 0 {
 		filterCacheSize = cfg.FilterCacheSize
 	}
-	s.FilterCache = lru.NewCache(filterCacheSize)
+	s.FilterCache = lru.NewCache[FilterCacheKey, *CacheableFilter](
+		filterCacheSize,
+	)
 
 	if cfg.BlockCache != nil {
 		s.BlockCache = cfg.BlockCache
@@ -713,7 +780,9 @@ func NewChainService(cfg Config) (*ChainService, error) {
 		if cfg.BlockCacheSize != 0 {
 			blockCacheSize = cfg.BlockCacheSize
 		}
-		s.BlockCache = lru.NewCache(blockCacheSize)
+		s.BlockCache = lru.NewCache[wire.InvVect, *CacheableBlock](
+			blockCacheSize,
+		)
 	}
 
 	s.BlockHeaders, err = headerfs.NewBlockHeaderStore(
@@ -755,7 +824,6 @@ func NewChainService(cfg Config) (*ChainService, error) {
 	var newAddressFunc func() (net.Addr, error)
 	if !isDevNetwork(s.chainParams.Net) {
 		newAddressFunc = func() (net.Addr, error) {
-
 			// Gather our set of currently connected peers to avoid
 			// connecting to them again.
 			connectedPeers := make(map[string]struct{})
@@ -815,6 +883,7 @@ func NewChainService(cfg Config) (*ChainService, error) {
 				// allow nondefault ports after 50 failed tries.
 				if tries < 50 && fmt.Sprintf("%d", addr.NetAddress().Port) !=
 					s.chainParams.DefaultPort {
+
 					continue
 				}
 
@@ -936,7 +1005,7 @@ func (s *ChainService) BestBlock() (*headerfs.BlockStamp, error) {
 		return nil, err
 	}
 
-	// Filter headers might lag behind block headers, so we can can fetch a
+	// Filter headers might lag behind block headers, so we can fetch a
 	// previous block header if the filter headers are not caught up.
 	if filterHeight < bestHeight {
 		bestHeight = filterHeight
@@ -969,6 +1038,7 @@ func (s *ChainService) GetBlockHash(height int64) (*chainhash.Hash, error) {
 // error if the hash doesn't exist or is unknown.
 func (s *ChainService) GetBlockHeader(
 	blockHash *chainhash.Hash) (*wire.BlockHeader, error) {
+
 	header, _, err := s.BlockHeaders.FetchHeader(blockHash)
 	return header, err
 }
@@ -1076,8 +1146,8 @@ func (s *ChainService) peerHandler() {
 	if !DisableDNSSeed {
 		// Add peers discovered through DNS to the address manager.
 		connmgr.SeedFromDNS(&s.chainParams, RequiredServices,
-			s.nameResolver, func(addrs []*wire.NetAddress) {
-				var validAddrs []*wire.NetAddress
+			s.nameResolver, func(addrs []*wire.NetAddressV2) {
+				var validAddrs []*wire.NetAddressV2
 				for _, addr := range addrs {
 					addr.Services = RequiredServices
 
@@ -1159,6 +1229,12 @@ func (s *ChainService) addrStringToNetAddr(addr string) (net.Addr, error) {
 		default:
 			return nil, err
 		}
+	}
+
+	// Tor addresses cannot be resolved to an IP, so just return onionAddr
+	// instead.
+	if strings.HasSuffix(host, ".onion") {
+		return &onionAddr{addr: addr}, nil
 	}
 
 	// Attempt to look up an IP address associated with the parsed host.
@@ -1282,7 +1358,7 @@ func (s *ChainService) handleAddPeerMsg(state *peerState, sp *ServerPeer) bool {
 
 		// Add the address to the addr manager anew, and also mark it as
 		// a good address.
-		s.addrManager.AddAddresses([]*wire.NetAddress{sp.NA()}, sp.NA())
+		s.addrManager.AddAddresses([]*wire.NetAddressV2{sp.NA()}, sp.NA())
 		s.addrManager.Good(sp.NA())
 	}
 
@@ -1399,8 +1475,8 @@ func (s *ChainService) SendTransaction(tx *wire.MsgTx) error {
 	return s.broadcaster.Broadcast(tx)
 }
 
-// newPeerConfig returns the configuration for the given ServerPeer.
-func newPeerConfig(sp *ServerPeer) *peer.Config {
+// NewPeerConfig returns the configuration for the given ServerPeer.
+func NewPeerConfig(sp *ServerPeer) *peer.Config {
 	return &peer.Config{
 		Listeners: peer.MessageListeners{
 			OnVersion:   sp.OnVersion,
@@ -1410,6 +1486,7 @@ func newPeerConfig(sp *ServerPeer) *peer.Config {
 			OnReject:    sp.OnReject,
 			OnFeeFilter: sp.OnFeeFilter,
 			OnAddr:      sp.OnAddr,
+			OnAddrV2:    sp.OnAddrV2,
 			OnRead:      sp.OnRead,
 			OnWrite:     sp.OnWrite,
 
@@ -1425,7 +1502,7 @@ func newPeerConfig(sp *ServerPeer) *peer.Config {
 		UserAgentVersion: sp.server.userAgentVersion,
 		ChainParams:      &sp.server.chainParams,
 		Services:         sp.server.services,
-		ProtocolVersion:  wire.FeeFilterVersion,
+		ProtocolVersion:  wire.AddrV2Version,
 		DisableRelayTx:   true,
 	}
 }
@@ -1467,8 +1544,8 @@ func (s *ChainService) outboundPeerConnected(c *connmgr.ConnReq, conn net.Conn) 
 		return
 	}
 
-	sp := newServerPeer(s, c.Permanent)
-	p, err := peer.NewOutboundPeer(newPeerConfig(sp), peerAddr)
+	sp := NewServerPeer(s, c.Permanent)
+	p, err := peer.NewOutboundPeer(NewPeerConfig(sp), peerAddr)
 	if err != nil {
 		log.Debugf("Cannot create outbound peer %s: %s", c.Addr, err)
 		disconnect()
@@ -1498,8 +1575,8 @@ func (s *ChainService) peerDoneHandler(sp *ServerPeer) {
 	close(sp.quit)
 }
 
-// UpdatePeerHeights updates the heights of all peers who have have announced
-// the latest connected main chain block, or a recognized orphan. These height
+// UpdatePeerHeights updates the heights of all peers who have announced the
+// latest connected main chain block, or a recognized orphan. These height
 // updates allow us to dynamically refresh peer heights, ensuring sync peer
 // selection has access to the latest block heights for each peer.
 func (s *ChainService) UpdatePeerHeights(latestBlkHash *chainhash.Hash,
@@ -1546,6 +1623,10 @@ func (s *ChainService) Start() error {
 			err)
 	}
 
+	if s.persistToDisk {
+		s.filterBatchWriter.Start()
+	}
+
 	go s.connManager.Start()
 
 	// Start the peer handler which in turn starts the address and block
@@ -1585,6 +1666,10 @@ func (s *ChainService) Stop() error {
 		returnErr = err
 	}
 
+	if s.persistToDisk {
+		s.filterBatchWriter.Stop()
+	}
+
 	// Signal the remaining goroutines to quit.
 	close(s.quit)
 	s.wg.Wait()
@@ -1621,12 +1706,14 @@ var _ ChainSource = (*RescanChainSource)(nil)
 // GetBlockHeaderByHeight returns the header of the block with the given height.
 func (s *RescanChainSource) GetBlockHeaderByHeight(
 	height uint32) (*wire.BlockHeader, error) {
+
 	return s.BlockHeaders.FetchHeaderByHeight(height)
 }
 
 // GetBlockHeader returns the header of the block with the given hash.
 func (s *RescanChainSource) GetBlockHeader(
 	hash *chainhash.Hash) (*wire.BlockHeader, uint32, error) {
+
 	return s.BlockHeaders.FetchHeader(hash)
 }
 
@@ -1634,6 +1721,7 @@ func (s *RescanChainSource) GetBlockHeader(
 // height.
 func (s *RescanChainSource) GetFilterHeaderByHeight(
 	height uint32) (*chainhash.Hash, error) {
+
 	return s.RegFilterHeaders.FetchHeaderByHeight(height)
 }
 
@@ -1643,5 +1731,35 @@ func (s *RescanChainSource) GetFilterHeaderByHeight(
 // of 0, a backlog will not be delivered.
 func (s *RescanChainSource) Subscribe(
 	bestHeight uint32) (*blockntfns.Subscription, error) {
+
 	return s.blockSubscriptionMgr.NewSubscription(bestHeight)
 }
+
+// cachedAddr is an empty struct used to satisfy the cache.Value interface.
+type cachedAddr struct{}
+
+// Size returns the size of cachedAddr, which is 1.
+func (c *cachedAddr) Size() (uint64, error) {
+	return 1, nil
+}
+
+// onionAddr implements the net.Addr interface and represents a tor address.
+// This code is identical to btcd's unexported onionAddr. It is used so that
+// neutrino can connect to v2 addresses without relying on the OnionCat
+// encoding. It also enables connecting to v3 addresses.
+type onionAddr struct {
+	addr string
+}
+
+// String returns the onion address.
+func (o *onionAddr) String() string {
+	return o.addr
+}
+
+// Network returns "onion".
+func (o *onionAddr) Network() string {
+	return "onion"
+}
+
+// Ensure onionAddr implements the net.Addr interface.
+var _ net.Addr = (*onionAddr)(nil)

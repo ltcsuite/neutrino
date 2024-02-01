@@ -61,8 +61,9 @@ var (
 	// "rv":	OnRecvTx
 	// "rd":	OnRedeemingTx
 	// "bd":	OnBlockDisconnected
-	// "fd":	OnFilteredBlockDisconnected
-	wantLog = func() (log []byte) {
+	// "fd":	OnFilteredBlockDisconnected.
+	wantLog = func() []byte {
+		var log []byte
 		for i := 1096; i <= 1100; i++ {
 			// FilteredBlockConnected
 			log = append(log, []byte("fc")...)
@@ -222,6 +223,7 @@ func (s *secSource) add(privKey *btcec.PrivateKey) (ltcutil.Address, error) {
 // GetKey is required by the txscript.KeyDB interface.
 func (s *secSource) GetKey(addr ltcutil.Address) (*btcec.PrivateKey, bool,
 	error) {
+
 	privKey, ok := s.keys[addr.String()]
 	if !ok {
 		return nil, true, fmt.Errorf("No key for address %s", addr)
@@ -238,7 +240,7 @@ func (s *secSource) GetScript(addr ltcutil.Address) ([]byte, error) {
 	return *script, nil
 }
 
-// ChainParams is required by the SecretsSource interface
+// ChainParams is required by the SecretsSource interface.
 func (s *secSource) ChainParams() *chaincfg.Params {
 	return s.params
 }
@@ -442,23 +444,26 @@ func testStartRescan(harness *neutrinoHarness, t *testing.T) {
 	inSrc := func(tx wire.MsgTx) func(target ltcutil.Amount) (
 		total ltcutil.Amount, inputs []*wire.TxIn,
 		inputValues []ltcutil.Amount, scripts [][]byte, err error) {
+
 		ourIndex := 1 << 30 // Should work on 32-bit systems
 		for i, txo := range tx.TxOut {
 			if bytes.Equal(txo.PkScript, script1) ||
 				bytes.Equal(txo.PkScript, script2) {
+
 				ourIndex = i
 			}
 		}
-		return func(target ltcutil.Amount) (total ltcutil.Amount,
-			inputs []*wire.TxIn, inputValues []ltcutil.Amount,
-			scripts [][]byte, err error) {
+		return func(target ltcutil.Amount) (ltcutil.Amount,
+			[]*wire.TxIn, []ltcutil.Amount,
+			[][]byte, error) {
+
 			if ourIndex == 1<<30 {
 				err = fmt.Errorf("Couldn't find our address " +
 					"in the passed transaction's outputs.")
-				return
+				return 0, nil, nil, nil, err
 			}
-			total = target
-			inputs = []*wire.TxIn{
+			total := target
+			inputs := []*wire.TxIn{
 				{
 					PreviousOutPoint: wire.OutPoint{
 						Hash:  tx.TxHash(),
@@ -466,11 +471,12 @@ func testStartRescan(harness *neutrinoHarness, t *testing.T) {
 					},
 				},
 			}
-			inputValues = []ltcutil.Amount{
-				ltcutil.Amount(tx.TxOut[ourIndex].Value)}
-			scripts = [][]byte{tx.TxOut[ourIndex].PkScript}
-			err = nil
-			return
+			inputValues := []ltcutil.Amount{
+				ltcutil.Amount(tx.TxOut[ourIndex].Value),
+			}
+			scripts := [][]byte{tx.TxOut[ourIndex].PkScript}
+
+			return total, inputs, inputValues, scripts, nil
 		}
 	}
 
@@ -810,8 +816,8 @@ func testRescanResults(harness *neutrinoHarness, t *testing.T) {
 		t.Fatalf("Rescan ended with error: %s", err)
 	}
 
-	// Immediately try to add a new update to to the rescan that was just
-	// shut down. This should fail as it is no longer running.
+	// Immediately try to add a new update to the rescan that was just shut
+	// down. This should fail as it is no longer running.
 	rescan.WaitForShutdown()
 	err = rescan.Update(neutrino.AddAddrs(addr2), neutrino.Rewind(1095))
 	if err == nil {
@@ -878,8 +884,10 @@ func testRandomBlocks(harness *neutrinoHarness, t *testing.T) {
 				return
 			}
 			// Check that network and RPC blocks match.
-			if !reflect.DeepEqual(*haveBlock.MsgBlock(),
-				*wantBlock) {
+			if !reflect.DeepEqual(
+				*haveBlock.MsgBlock(), *wantBlock,
+			) {
+
 				errChan <- fmt.Errorf("Block from network "+
 					"doesn't match block from RPC. Want: "+
 					"%s, RPC: %s, network: %s", blockHash,
@@ -1210,6 +1218,7 @@ func checkErrChan(t *testing.T, errChan <-chan error) {
 // waitForSync waits for the ChainService to sync to the current chain state.
 func waitForSync(t *testing.T, svc *neutrino.ChainService,
 	correctSyncNode *rpctest.Harness) error {
+
 	knownBestHash, knownBestHeight, err :=
 		correctSyncNode.Client.GetBestBlock()
 	if err != nil {
@@ -1379,6 +1388,7 @@ func waitForSync(t *testing.T, svc *neutrino.ChainService,
 func startRescan(t *testing.T, svc *neutrino.ChainService, addr ltcutil.Address,
 	startBlock *headerfs.BlockStamp, quit <-chan struct{}) (
 	*neutrino.Rescan, <-chan error) {
+
 	rescan := neutrino.NewRescan(
 		&neutrino.RescanChainSource{svc},
 		neutrino.QuitChan(quit),
@@ -1389,6 +1399,7 @@ func startRescan(t *testing.T, svc *neutrino.ChainService, addr ltcutil.Address,
 				OnBlockConnected: func(
 					hash *chainhash.Hash,
 					height int32, time time.Time) {
+
 					rescanMtx.Lock()
 					gotLog = append(gotLog,
 						[]byte("bc")...)
@@ -1398,6 +1409,7 @@ func startRescan(t *testing.T, svc *neutrino.ChainService, addr ltcutil.Address,
 				OnBlockDisconnected: func(
 					hash *chainhash.Hash,
 					height int32, time time.Time) {
+
 					rescanMtx.Lock()
 					delete(ourKnownTxsByBlock, *hash)
 					gotLog = append(gotLog,
@@ -1407,6 +1419,7 @@ func startRescan(t *testing.T, svc *neutrino.ChainService, addr ltcutil.Address,
 				},
 				OnRecvTx: func(tx *ltcutil.Tx,
 					details *btcjson.BlockDetails) {
+
 					rescanMtx.Lock()
 					hash, err := chainhash.
 						NewHashFromStr(
@@ -1427,6 +1440,7 @@ func startRescan(t *testing.T, svc *neutrino.ChainService, addr ltcutil.Address,
 				},
 				OnRedeemingTx: func(tx *ltcutil.Tx,
 					details *btcjson.BlockDetails) {
+
 					rescanMtx.Lock()
 					hash, err := chainhash.
 						NewHashFromStr(
@@ -1449,6 +1463,7 @@ func startRescan(t *testing.T, svc *neutrino.ChainService, addr ltcutil.Address,
 					height int32,
 					header *wire.BlockHeader,
 					relevantTxs []*ltcutil.Tx) {
+
 					rescanMtx.Lock()
 					ourKnownTxsByFilteredBlock[header.BlockHash()] =
 						relevantTxs
@@ -1462,6 +1477,7 @@ func startRescan(t *testing.T, svc *neutrino.ChainService, addr ltcutil.Address,
 				OnFilteredBlockDisconnected: func(
 					height int32,
 					header *wire.BlockHeader) {
+
 					rescanMtx.Lock()
 					delete(ourKnownTxsByFilteredBlock,
 						header.BlockHash())
