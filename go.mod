@@ -8,6 +8,7 @@ require (
 	github.com/ltcsuite/ltcd/btcec/v2 v2.3.2
 	github.com/ltcsuite/ltcd/chaincfg/chainhash v1.0.2
 	github.com/ltcsuite/ltcd/ltcutil v1.1.3
+	github.com/ltcsuite/ltcwallet v0.13.1
 	github.com/ltcsuite/ltcwallet/wallet/txauthor v1.2.3
 	github.com/ltcsuite/ltcwallet/wallet/txrules v1.2.0 // indirect
 	github.com/ltcsuite/ltcwallet/wallet/txsizes v1.2.3 // indirect
@@ -29,7 +30,6 @@ require (
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	github.com/ltcsuite/lnd/clock v1.1.0 // indirect
 	github.com/ltcsuite/lnd/ticker v1.1.0 // indirect
-	github.com/ltcsuite/ltcwallet v0.13.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	go.etcd.io/bbolt v1.3.6 // indirect
 	golang.org/x/crypto v0.7.0 // indirect
@@ -49,7 +49,11 @@ replace github.com/ltcsuite/ltcd/chaincfg/chainhash => ../ltcd/chaincfg/chainhas
 
 replace github.com/ltcsuite/ltcd/ltcutil => ../ltcd/ltcutil
 
+replace github.com/ltcsuite/ltcwallet => ../ltcwallet
+
 replace github.com/ltcsuite/ltcwallet/walletdb => ../ltcwallet/walletdb
+
+replace github.com/ltcsuite/ltcwallet/waddrmgr => ../ltcwallet/waddrmgr
 
 replace github.com/ltcsuite/ltcwallet/wtxmgr => ../ltcwallet/wtxmgr
 
