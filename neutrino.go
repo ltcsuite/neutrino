@@ -57,7 +57,8 @@ var (
 
 	// RequiredServices describes the services that are required to be
 	// supported by outbound peers.
-	RequiredServices = wire.SFNodeNetwork | wire.SFNodeWitness | wire.SFNodeCF
+	RequiredServices = wire.SFNodeNetwork | wire.SFNodeWitness |
+		wire.SFNodeCF | wire.SFNodeMWEB | wire.SFNodeMWEBLightClient
 
 	// BanThreshold is the maximum ban score before a peer is banned.
 	BanThreshold = uint32(100)
@@ -238,10 +239,7 @@ func (sp *ServerPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) *wire.MsgRej
 	// Check to see if the peer supports the latest protocol version and
 	// service bits required to service us. If not, then we'll disconnect
 	// so we can find compatible peers.
-	peerServices := sp.Services()
-	if peerServices&wire.SFNodeWitness != wire.SFNodeWitness ||
-		peerServices&wire.SFNodeCF != wire.SFNodeCF {
-
+	if sp.Services()&RequiredServices != RequiredServices {
 		peerAddr := sp.Addr()
 		err := sp.server.BanPeer(peerAddr, banman.NoCompactFilters)
 		if err != nil {

@@ -365,7 +365,10 @@ checkResponses:
 		select {
 		case <-queryQuit:
 			break checkResponses
+		default:
+		}
 
+		select {
 		case <-s.quit:
 			break checkResponses
 
