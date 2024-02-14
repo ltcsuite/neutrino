@@ -109,7 +109,7 @@ func (c *CoinStore) GetLeafSet() (leafset []byte, numLeaves uint64, err error) {
 	err = walletdb.View(c.db, func(tx walletdb.ReadTx) error {
 		rootBucket := tx.ReadBucket(rootBucket)
 
-		leafset = rootBucket.Get([]byte("leafset"))
+		leafset = bytes.Clone(rootBucket.Get([]byte("leafset")))
 		if leafset == nil {
 			return nil
 		}
@@ -248,7 +248,7 @@ func (c *CoinStore) FetchLeaves(leaves []uint64) ([]*wire.MwebNetUtxo, error) {
 
 		for _, leaf := range leaves {
 			leafIndex := binary.LittleEndian.AppendUint64(nil, leaf)
-			outputId := leafBucket.Get(leafIndex)
+			outputId := bytes.Clone(leafBucket.Get(leafIndex))
 			if outputId == nil {
 				return ErrLeafNotFound
 			}
