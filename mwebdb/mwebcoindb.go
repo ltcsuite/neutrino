@@ -219,7 +219,7 @@ func (c *CoinStore) FetchCoin(outputId *chainhash.Hash) (*wire.MwebOutput, error
 		if coinBytes == nil {
 			return ErrCoinNotFound
 		}
-		buf := bytes.NewBuffer(coinBytes)
+		buf := bytes.NewReader(coinBytes)
 
 		var height int32
 		err := binary.Read(buf, binary.LittleEndian, &height)
@@ -257,7 +257,7 @@ func (c *CoinStore) FetchLeaves(leaves []uint64) ([]*wire.MwebNetUtxo, error) {
 			if coinBytes == nil {
 				return ErrCoinNotFound
 			}
-			buf := bytes.NewBuffer(coinBytes)
+			buf := bytes.NewReader(coinBytes)
 
 			coin := &wire.MwebNetUtxo{
 				LeafIndex: leaf,
