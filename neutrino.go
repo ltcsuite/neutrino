@@ -1026,6 +1026,20 @@ func NewChainService(cfg Config) (*ChainService, error) {
 	return &s, nil
 }
 
+func (s *ChainService) ConnectPeer(addr string) error {
+	tcpAddr, err := s.addrStringToNetAddr(addr)
+	if err != nil {
+		return fmt.Errorf("unable to lookup IP for "+
+			"%v: %v", addr, err)
+	}
+
+	s.connManager.Connect(&connmgr.ConnReq{
+		Addr:      tcpAddr,
+		Permanent: true,
+	})
+	return nil
+}
+
 // BestBlock retrieves the most recent block's height and hash where we
 // have both the header and filter header ready.
 func (s *ChainService) BestBlock() (*headerfs.BlockStamp, error) {
