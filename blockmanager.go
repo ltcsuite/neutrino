@@ -2923,7 +2923,9 @@ func (b *blockManager) handleHeadersMsg(hmsg *headersMsg) {
 
 	// Clear the mempool to free up memory. This may mean we might receive
 	// transactions we've previously downloaded but this is rather unlikely.
-	b.cfg.mempool.Clear()
+	if b.cfg.mempool != nil {
+		b.cfg.mempool.Clear()
+	}
 }
 
 // areHeadersConnected returns true if the passed block headers are connected to
