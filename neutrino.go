@@ -1206,6 +1206,17 @@ func (s *ChainService) NotifyAddedMwebUtxos(leafset []byte) error {
 	return s.blockManager.notifyAddedMwebUtxos(leafset)
 }
 
+// MwebUtxoExists checks if a mweb utxo with the given output ID exists in the db.
+func (s *ChainService) MwebUtxoExists(outputId *chainhash.Hash) bool {
+	if _, err := s.MwebCoinDB.FetchCoin(outputId); err != nil {
+		if err == mwebdb.ErrCoinNotFound {
+			return false
+		}
+		panic(err)
+	}
+	return true
+}
+
 // peerHandler is used to handle peer operations such as adding and removing
 // peers to and from the server, banning peers, and broadcasting messages to
 // peers.  It must be run in a goroutine.
