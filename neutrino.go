@@ -15,7 +15,6 @@ import (
 
 	"github.com/ltcsuite/ltcd/addrmgr"
 	"github.com/ltcsuite/ltcd/blockchain"
-	"github.com/ltcsuite/ltcd/btcjson"
 	"github.com/ltcsuite/ltcd/chaincfg"
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
 	"github.com/ltcsuite/ltcd/connmgr"
@@ -1183,7 +1182,7 @@ func (s *ChainService) NetTotals() (uint64, uint64) {
 
 // RegisterMempoolCallback registers a callback to be fired whenever a new transaction is
 // received into the mempool
-func (s *ChainService) RegisterMempoolCallback(onRecvTx func(tx *ltcutil.Tx, block *btcjson.BlockDetails)) {
+func (s *ChainService) RegisterMempoolCallback(onRecvTx func(*ltcutil.Tx)) {
 	s.mempool.RegisterCallback(onRecvTx)
 }
 

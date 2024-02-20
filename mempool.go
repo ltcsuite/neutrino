@@ -3,7 +3,6 @@ package neutrino
 import (
 	"sync"
 
-	"github.com/ltcsuite/ltcd/btcjson"
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
 	"github.com/ltcsuite/ltcd/ltcutil"
 )
@@ -14,7 +13,7 @@ import (
 type Mempool struct {
 	downloadedTxs map[chainhash.Hash]bool
 	mtx           sync.RWMutex
-	callbacks     []func(tx *ltcutil.Tx, block *btcjson.BlockDetails)
+	callbacks     []func(*ltcutil.Tx)
 	watchedAddrs  []ltcutil.Address
 }
 
@@ -28,7 +27,7 @@ func NewMempool() *Mempool {
 
 // RegisterCallback will register a callback that will fire when a transaction
 // matching a watched address enters the mempool.
-func (mp *Mempool) RegisterCallback(onRecvTx func(tx *ltcutil.Tx, block *btcjson.BlockDetails)) {
+func (mp *Mempool) RegisterCallback(onRecvTx func(*ltcutil.Tx)) {
 	mp.mtx.Lock()
 	defer mp.mtx.Unlock()
 	mp.callbacks = append(mp.callbacks, onRecvTx)
@@ -53,7 +52,7 @@ func (mp *Mempool) AddTransaction(tx *ltcutil.Tx) {
 	WatchAddrs(mp.watchedAddrs...)(ro)
 	if ok, err := ro.paysWatchedAddr(tx); ok && err == nil {
 		for _, cb := range mp.callbacks {
-			cb(tx, nil)
+			cb(tx)
 		}
 	}
 }
