@@ -52,7 +52,7 @@ var (
 	UserAgentVersion = "0.12.0-beta"
 
 	// Services describes the services that are supported by the server.
-	Services = wire.SFNodeWitness | wire.SFNodeCF
+	Services = wire.SFNodeWitness | wire.SFNodeCF | wire.SFNodeMWEB
 
 	// RequiredServices describes the services that are required to be
 	// supported by outbound peers.
@@ -848,6 +848,7 @@ func NewChainService(cfg Config) (*ChainService, error) {
 	}
 	s.blockManager = bm
 	s.blockSubscriptionMgr = blockntfns.NewSubscriptionManager(s.blockManager)
+	s.mempool.blockManager = bm
 
 	// Only setup a function to return new addresses to connect to when not
 	// running in connect-only mode.  Private development networks are always in

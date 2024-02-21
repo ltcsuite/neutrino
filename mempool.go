@@ -11,6 +11,7 @@ import (
 // We will use this object to track which transactions we've already
 // downloaded so that we don't download them more than once.
 type Mempool struct {
+	blockManager  *blockManager
 	downloadedTxs map[chainhash.Hash]bool
 	mtx           sync.RWMutex
 	callbacks     []func(*ltcutil.Tx)
@@ -54,6 +55,10 @@ func (mp *Mempool) AddTransaction(tx *ltcutil.Tx) {
 		for _, cb := range mp.callbacks {
 			cb(tx)
 		}
+	}
+
+	if tx.MsgTx().Mweb != nil {
+		mp.blockManager.notifyMwebUtxos(tx.MsgTx().Mweb.TxBody.Outputs)
 	}
 }
 

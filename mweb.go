@@ -654,3 +654,19 @@ func (b *blockManager) notifyAddedMwebUtxos(leafSet []byte) error {
 
 	return nil
 }
+
+func (b *blockManager) notifyMwebUtxos(outputs []*wire.MwebOutput) {
+	b.mwebUtxosCallbacksMtx.Lock()
+	defer b.mwebUtxosCallbacksMtx.Unlock()
+
+	var utxos []*wire.MwebNetUtxo
+	for _, output := range outputs {
+		utxos = append(utxos, &wire.MwebNetUtxo{
+			Output:   output,
+			OutputId: output.Hash(),
+		})
+	}
+	for _, cb := range b.mwebUtxosCallbacks {
+		cb(nil, utxos)
+	}
+}

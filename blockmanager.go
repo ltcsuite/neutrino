@@ -2435,7 +2435,10 @@ func (b *blockManager) handleInvMsg(imsg *invMsg) {
 				}
 				if _, exists := b.requestedTxns[iv.Hash]; !exists {
 					b.requestedTxns[iv.Hash] = struct{}{}
-					gdmsg.AddInvVect(iv)
+					gdmsg.AddInvVect(&wire.InvVect{
+						Type: wire.InvTypeMwebTx,
+						Hash: iv.Hash,
+					})
 				}
 			}
 		}
