@@ -528,10 +528,12 @@ func (b *blockManager) mwebHandler() {
 					mwebLeafset = m
 				}
 
-				verified = verifyMwebHeader(mwebHeader,
-					mwebLeafset, lastHeight, &lastHash)
+				verified = verifyMwebHeader(mwebHeader, lastHash)
+				verified = verified && verifyMwebLeafset(mwebHeader, mwebLeafset)
 
 				if verified {
+					log.Infof("Verified mwebheader and mwebleafset at "+
+						"(block_height=%v, block_hash=%v)", lastHeight, lastHash)
 					close(quit)
 					close(peerQuit)
 				}

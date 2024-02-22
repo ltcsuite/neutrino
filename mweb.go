@@ -15,19 +15,14 @@ import (
 	"lukechampine.com/blake3"
 )
 
-func verifyMwebHeader(
-	mwebHeader *wire.MsgMwebHeader, mwebLeafset *wire.MsgMwebLeafset,
-	lastHeight uint32, lastHash *chainhash.Hash) bool {
-
-	if mwebHeader == nil || mwebLeafset == nil {
+func verifyMwebHeader(mwebHeader *wire.MsgMwebHeader, lastHash chainhash.Hash) bool {
+	if mwebHeader == nil {
 		return false
 	}
-	log.Infof("Got mwebheader and mwebleafset at (block_height=%v, block_hash=%v)",
-		lastHeight, *lastHash)
 
-	if mwebHeader.Merkle.Header.BlockHash() != *lastHash {
+	if mwebHeader.Merkle.Header.BlockHash() != lastHash {
 		log.Infof("Block hash mismatch, merkle header hash=%v, block hash=%v",
-			mwebHeader.Merkle.Header.BlockHash(), *lastHash)
+			mwebHeader.Merkle.Header.BlockHash(), lastHash)
 		return false
 	}
 
@@ -69,6 +64,16 @@ func verifyMwebHeader(
 		return false
 	}
 
+	return true
+}
+
+func verifyMwebLeafset(mwebHeader *wire.MsgMwebHeader,
+	mwebLeafset *wire.MsgMwebLeafset) bool {
+
+	if mwebLeafset == nil {
+		return false
+	}
+
 	// Verify that the hash of the leafset bitmap matches the
 	// leafset_root value in the MWEB header.
 	leafsetRoot := chainhash.Hash(blake3.Sum256(mwebLeafset.Leafset))
@@ -78,8 +83,6 @@ func verifyMwebHeader(
 		return false
 	}
 
-	log.Infof("Verified mwebheader and mwebleafset at (block_height=%v, block_hash=%v)",
-		lastHeight, *lastHash)
 	return true
 }
 
