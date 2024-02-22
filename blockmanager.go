@@ -24,7 +24,7 @@ import (
 	"github.com/ltcsuite/neutrino/chainsync"
 	"github.com/ltcsuite/neutrino/headerfs"
 	"github.com/ltcsuite/neutrino/headerlist"
-	"github.com/ltcsuite/neutrino/mwebdb"
+	"github.com/ltcsuite/neutrino/mweb"
 	"github.com/ltcsuite/neutrino/query"
 )
 
@@ -95,7 +95,7 @@ type blockManagerCfg struct {
 	RegFilterHeaders *headerfs.FilterHeaderStore
 
 	// MwebCoins is the store where mweb coins are persistently stored.
-	MwebCoins mwebdb.CoinDatabase
+	MwebCoins mweb.CoinDatabase
 
 	// TimeSource is used to access a time estimate based on the clocks of
 	// the connected peers.
@@ -523,20 +523,37 @@ func (b *blockManager) mwebHandler() {
 
 				switch m := resp.(type) {
 				case *wire.MsgMwebHeader:
+					if err := mweb.VerifyHeader(m, lastHash); err != nil {
+						log.Infof("failed to verify mwebheader: %v", err)
+						return
+					}
 					mwebHeader = m
+
 				case *wire.MsgMwebLeafset:
 					mwebLeafset = m
+
+				default:
+					log.Infof("unexpected message %v", resp)
+					return
 				}
 
-				verified = verifyMwebHeader(mwebHeader, lastHash)
-				verified = verified && verifyMwebLeafset(mwebHeader, mwebLeafset)
-
-				if verified {
-					log.Infof("Verified mwebheader and mwebleafset at "+
-						"(block_height=%v, block_hash=%v)", lastHeight, lastHash)
-					close(quit)
-					close(peerQuit)
+				if mwebHeader == nil || mwebLeafset == nil {
+					return
 				}
+
+				err := mweb.VerifyLeafset(mwebHeader, mwebLeafset)
+				if err != nil {
+					log.Infof("failed to verify mwebleafset: %v", err)
+					return
+				}
+
+				verified = true
+
+				log.Infof("Verified mwebheader and mwebleafset at "+
+					"(block_height=%v, block_hash=%v)", lastHeight, lastHash)
+
+				close(quit)
+				close(peerQuit)
 			},
 		)
 		select {

@@ -28,7 +28,7 @@ import (
 	"github.com/ltcsuite/neutrino/chanutils"
 	"github.com/ltcsuite/neutrino/filterdb"
 	"github.com/ltcsuite/neutrino/headerfs"
-	"github.com/ltcsuite/neutrino/mwebdb"
+	"github.com/ltcsuite/neutrino/mweb"
 	"github.com/ltcsuite/neutrino/pushtx"
 	"github.com/ltcsuite/neutrino/query"
 )
@@ -658,7 +658,7 @@ type ChainService struct { // nolint:maligned
 	FilterDB         filterdb.FilterDatabase
 	BlockHeaders     headerfs.BlockHeaderStore
 	RegFilterHeaders *headerfs.FilterHeaderStore
-	MwebCoinDB       mwebdb.CoinDatabase
+	MwebCoinDB       mweb.CoinDatabase
 	persistToDisk    bool
 
 	FilterCache *lru.Cache[FilterCacheKey, *CacheableFilter]
@@ -825,7 +825,7 @@ func NewChainService(cfg Config) (*ChainService, error) {
 		return nil, err
 	}
 
-	s.MwebCoinDB, err = mwebdb.New(cfg.Database)
+	s.MwebCoinDB, err = mweb.NewCoinStore(cfg.Database)
 	if err != nil {
 		return nil, err
 	}
@@ -1209,7 +1209,7 @@ func (s *ChainService) NotifyAddedMwebUtxos(leafset []byte) error {
 // MwebUtxoExists checks if a mweb utxo with the given output ID exists in the db.
 func (s *ChainService) MwebUtxoExists(outputId *chainhash.Hash) bool {
 	if _, err := s.MwebCoinDB.FetchCoin(outputId); err != nil {
-		if err == mwebdb.ErrCoinNotFound {
+		if err == mweb.ErrCoinNotFound {
 			return false
 		}
 		panic(err)

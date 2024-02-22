@@ -1,4 +1,4 @@
-package mwebdb
+package mweb
 
 import (
 	"bytes"
@@ -74,9 +74,9 @@ type CoinStore struct {
 // interface.
 var _ CoinDatabase = (*CoinStore)(nil)
 
-// New creates a new instance of the CoinStore given an already open
-// database.
-func New(db walletdb.DB) (*CoinStore, error) {
+// NewCoinStore creates a new instance of the CoinStore given an
+// already open database.
+func NewCoinStore(db walletdb.DB) (*CoinStore, error) {
 	err := walletdb.Update(db, func(tx walletdb.ReadWriteTx) error {
 		// As part of our initial setup, we'll try to create the top
 		// level root bucket. If this already exists, then we can
