@@ -128,7 +128,7 @@ func (b *blockManager) getMwebHeaderBatch(fromHeight, toHeight,
 		case err := <-errChan:
 			switch {
 			case err == query.ErrWorkManagerShuttingDown:
-				return nil
+				return ErrShuttingDown
 			case err != nil:
 				log.Errorf("Query finished with error before "+
 					"all responses received: %v", err)
@@ -141,7 +141,7 @@ func (b *blockManager) getMwebHeaderBatch(fromHeight, toHeight,
 			continue
 
 		case <-b.quit:
-			return nil
+			return ErrShuttingDown
 		}
 
 		height := uint32(r.MwebHeader.Height)

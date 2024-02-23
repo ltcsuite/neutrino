@@ -509,6 +509,9 @@ func (b *blockManager) mwebHandler() {
 
 		// Get a representative set of mweb headers up to this height.
 		if err := b.getMwebHeaders(lastHeight); err != nil {
+			if err == ErrShuttingDown {
+				return
+			}
 			log.Error(err)
 			continue
 		}
@@ -557,9 +560,6 @@ func (b *blockManager) mwebHandler() {
 
 				verified = true
 
-				log.Infof("Verified mwebheader and mwebleafset at "+
-					"(block_height=%v, block_hash=%v)", lastHeight, lastHash)
-
 				close(quit)
 				close(peerQuit)
 			},
@@ -571,6 +571,16 @@ func (b *blockManager) mwebHandler() {
 			if !verified {
 				continue
 			}
+		}
+
+		log.Infof("Verified mwebheader and mwebleafset at "+
+			"(block_height=%v, block_hash=%v)", lastHeight, lastHash)
+
+		// Store the leaf count at this height.
+		err = b.cfg.MwebCoins.PutLeavesAtHeight(map[uint32]uint64{
+			lastHeight: mwebHeader.MwebHeader.OutputMMRSize})
+		if err != nil {
+			log.Errorf("failed to write mwebheader to db: %v", err)
 		}
 
 		// Get all the mweb utxos at this height.

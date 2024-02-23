@@ -1,7 +1,9 @@
 package neutrino
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
 	"github.com/ltcsuite/ltcd/wire"
@@ -114,6 +116,19 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 		q.requests(), query.Cancel(b.quit),
 	)
 
+	// Load the block height to leaf count mapping so that we can
+	// work out roughly when a utxo was included in a block.
+	heightMap, err := b.cfg.MwebCoins.GetLeavesAtHeight()
+	if err != nil {
+		log.Errorf("could not get leaves at height from db: %v", err)
+		return
+	}
+	heights := make([]uint32, 0, len(heightMap))
+	for height := range heightMap {
+		heights = append(heights, height)
+	}
+	slices.Sort(heights)
+
 	// Keep waiting for more mwebutxos as long as we haven't received an
 	// answer for our last getmwebutxos, and no error is encountered.
 	totalUtxos := 0
@@ -186,6 +201,19 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 			delete(queryResponses, curIndex)
 
 			log.Debugf("Writing mwebutxos at index=%v", curIndex)
+
+			// Calculate rough heights for each utxo.
+			for _, utxo := range r.Utxos {
+				index, _ := slices.BinarySearchFunc(heights, utxo.LeafIndex,
+					func(height uint32, leafIndex uint64) int {
+						return cmp.Compare(heightMap[height]-1, leafIndex)
+					})
+				if index < len(heights) {
+					utxo.Height = int32(heights[index])
+				} else {
+					utxo.Height = int32(lastHeight)
+				}
+			}
 
 			err := b.cfg.MwebCoins.PutCoins(r.Utxos)
 			if err != nil {
