@@ -30,7 +30,7 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 		"height=%v, hash=%v", lastHeight, *lastHash)
 
 	newNumLeaves := mwebHeader.OutputMMRSize
-	dbLeafset, oldNumLeaves, err := b.cfg.MwebCoins.GetLeafSet()
+	dbLeafset, oldNumLeaves, err := b.cfg.MwebCoins.GetLeafset()
 	if err != nil {
 		log.Errorf("Couldn't read mweb coins db: %v", err)
 		return err
@@ -218,7 +218,7 @@ func (b *blockManager) purgeSpentMwebTxos(newLeafset mweb.Leafset,
 		log.Infof("Purging %v spent mweb txos from db", len(removedLeaves))
 	}
 
-	err := b.cfg.MwebCoins.PutLeafSetAndPurge(
+	err := b.cfg.MwebCoins.PutLeafsetAndPurge(
 		newLeafset, newNumLeaves, removedLeaves)
 	if err != nil {
 		log.Errorf("Couldn't purge mweb txos: %v", err)
@@ -298,15 +298,15 @@ func (m *mwebUtxosQuery) handleResponse(req, resp wire.Message,
 	return query.Progress{Finished: true, Progressed: true}
 }
 
-func (b *blockManager) notifyAddedMwebUtxos(leafSet []byte) error {
+func (b *blockManager) notifyAddedMwebUtxos(leafset []byte) error {
 	b.mwebUtxosCallbacksMtx.Lock()
 	defer b.mwebUtxosCallbacksMtx.Unlock()
 
-	dbLeafset, newNumLeaves, err := b.cfg.MwebCoins.GetLeafSet()
+	dbLeafset, newNumLeaves, err := b.cfg.MwebCoins.GetLeafset()
 	if err != nil {
 		return err
 	}
-	oldLeafset := mweb.Leafset(leafSet)
+	oldLeafset := mweb.Leafset(leafset)
 	newLeafset := mweb.Leafset(dbLeafset)
 
 	// Skip over common prefix

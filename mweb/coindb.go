@@ -51,11 +51,11 @@ type CoinDatabase interface {
 	PutLeavesAtHeight(map[uint32]uint64) error
 
 	// Get the leafset marking the unspent indices.
-	GetLeafSet() (leafset []byte, numLeaves uint64, err error)
+	GetLeafset() (leafset []byte, numLeaves uint64, err error)
 
 	// Set the leafset and purge the specified leaves and their
 	// associated coins from persistent storage.
-	PutLeafSetAndPurge(leafset []byte, numLeaves uint64,
+	PutLeafsetAndPurge(leafset []byte, numLeaves uint64,
 		removedLeaves []uint64) error
 
 	// PutCoins stores coins to persistent storage.
@@ -158,7 +158,7 @@ func (c *CoinStore) PutLeavesAtHeight(m map[uint32]uint64) error {
 // Get the leafset marking the unspent indices.
 //
 // NOTE: This method is a part of the CoinDatabase interface.
-func (c *CoinStore) GetLeafSet() (leafset []byte, numLeaves uint64, err error) {
+func (c *CoinStore) GetLeafset() (leafset []byte, numLeaves uint64, err error) {
 	err = walletdb.View(c.db, func(tx walletdb.ReadTx) error {
 		rootBucket := tx.ReadBucket(rootBucket)
 
@@ -185,7 +185,7 @@ func (c *CoinStore) GetLeafSet() (leafset []byte, numLeaves uint64, err error) {
 // coins from persistent storage.
 //
 // NOTE: This method is a part of the CoinDatabase interface.
-func (c *CoinStore) PutLeafSetAndPurge(leafset []byte,
+func (c *CoinStore) PutLeafsetAndPurge(leafset []byte,
 	numLeaves uint64, removedLeaves []uint64) error {
 
 	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
