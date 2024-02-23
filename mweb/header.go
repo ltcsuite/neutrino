@@ -12,15 +12,7 @@ import (
 	"lukechampine.com/blake3"
 )
 
-func VerifyHeader(mwebHeader *wire.MsgMwebHeader,
-	blockHash chainhash.Hash) error {
-
-	if mwebHeader.Merkle.Header.BlockHash() != blockHash {
-		return fmt.Errorf("block hash mismatch, "+
-			"merkle header hash=%v, block hash=%v",
-			mwebHeader.Merkle.Header.BlockHash(), blockHash)
-	}
-
+func VerifyHeader(mwebHeader *wire.MsgMwebHeader) error {
 	extractResult := bloom.VerifyMerkleBlock(&mwebHeader.Merkle)
 	if !extractResult.Root.IsEqual(&mwebHeader.Merkle.Header.MerkleRoot) {
 		return errors.New("mwebheader merkle block is bad")

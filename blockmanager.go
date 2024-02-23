@@ -507,6 +507,12 @@ func (b *blockManager) mwebHandler() {
 		log.Infof("Starting mweb sync at (block_height=%v, block_hash=%v)",
 			lastHeight, lastHash)
 
+		// Get a representative set of mweb headers up to this height.
+		if err := b.getMwebHeaders(lastHeight); err != nil {
+			log.Error(err)
+			continue
+		}
+
 		gdmsg := wire.NewMsgGetData()
 		gdmsg.AddInvVect(wire.NewInvVect(wire.InvTypeMwebHeader, &lastHash))
 		gdmsg.AddInvVect(wire.NewInvVect(wire.InvTypeMwebLeafset, &lastHash))
@@ -523,7 +529,10 @@ func (b *blockManager) mwebHandler() {
 
 				switch m := resp.(type) {
 				case *wire.MsgMwebHeader:
-					if err := mweb.VerifyHeader(m, lastHash); err != nil {
+					if m.Merkle.Header.BlockHash() != lastHash {
+						return
+					}
+					if err := mweb.VerifyHeader(m); err != nil {
 						log.Infof("failed to verify mwebheader: %v", err)
 						return
 					}
@@ -533,7 +542,6 @@ func (b *blockManager) mwebHandler() {
 					mwebLeafset = m
 
 				default:
-					log.Infof("unexpected message %v", resp)
 					return
 				}
 
