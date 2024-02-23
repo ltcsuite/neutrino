@@ -16,6 +16,10 @@ var (
 	// actual coins.
 	rootBucket = []byte("mweb-coindb")
 
+	// heightBucket is the bucket that stores the mapping between
+	// block heights and number of leaves.
+	heightBucket = []byte("heights")
+
 	// coinBucket is the bucket that stores the coins.
 	coinBucket = []byte("coins")
 
@@ -40,6 +44,12 @@ var (
 // CoinDatabase is an interface which represents an object that is capable of
 // storing and retrieving coins according to their corresponding output ID.
 type CoinDatabase interface {
+	// Get the block height to number of leaves mapping.
+	GetLeavesAtHeight() (map[uint32]uint64, error)
+
+	// Set the block height to number of leaves mapping.
+	PutLeavesAtHeight(map[uint32]uint64) error
+
 	// Get the leafset marking the unspent indices.
 	GetLeafSet() (leafset []byte, numLeaves uint64, err error)
 
@@ -88,6 +98,10 @@ func NewCoinStore(db walletdb.DB) (*CoinStore, error) {
 
 		// If the main bucket doesn't already exist, then we'll need to
 		// create the sub-buckets.
+		_, err = rootBucket.CreateBucketIfNotExists(heightBucket)
+		if err != nil {
+			return err
+		}
 		_, err = rootBucket.CreateBucketIfNotExists(coinBucket)
 		if err != nil {
 			return err
@@ -100,6 +114,45 @@ func NewCoinStore(db walletdb.DB) (*CoinStore, error) {
 	}
 
 	return &CoinStore{db: db}, nil
+}
+
+// Get the block height to number of leaves mapping.
+//
+// NOTE: This method is a part of the CoinDatabase interface.
+func (c *CoinStore) GetLeavesAtHeight() (map[uint32]uint64, error) {
+	m := make(map[uint32]uint64)
+	err := walletdb.View(c.db, func(tx walletdb.ReadTx) error {
+		rootBucket := tx.ReadBucket(rootBucket)
+		heightBucket := rootBucket.NestedReadBucket(heightBucket)
+
+		return heightBucket.ForEach(func(k, v []byte) error {
+			height := binary.LittleEndian.Uint32(k)
+			m[height] = binary.LittleEndian.Uint64(v)
+			return nil
+		})
+	})
+	return m, err
+}
+
+// Set the block height to number of leaves mapping.
+//
+// NOTE: This method is a part of the CoinDatabase interface.
+func (c *CoinStore) PutLeavesAtHeight(m map[uint32]uint64) error {
+	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
+		rootBucket := tx.ReadWriteBucket(rootBucket)
+		heightBucket := rootBucket.NestedReadWriteBucket(heightBucket)
+
+		for height, numLeaves := range m {
+			err := heightBucket.Put(
+				binary.LittleEndian.AppendUint32(nil, height),
+				binary.LittleEndian.AppendUint64(nil, numLeaves),
+			)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // Get the leafset marking the unspent indices.
@@ -291,6 +344,9 @@ func (c *CoinStore) PurgeCoins() error {
 	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
 		rootBucket := tx.ReadWriteBucket(rootBucket)
 
+		if err := rootBucket.DeleteNestedBucket(heightBucket); err != nil {
+			return err
+		}
 		if err := rootBucket.DeleteNestedBucket(coinBucket); err != nil {
 			return err
 		}
@@ -298,6 +354,9 @@ func (c *CoinStore) PurgeCoins() error {
 			return err
 		}
 
+		if _, err := rootBucket.CreateBucket(heightBucket); err != nil {
+			return err
+		}
 		if _, err := rootBucket.CreateBucket(coinBucket); err != nil {
 			return err
 		}

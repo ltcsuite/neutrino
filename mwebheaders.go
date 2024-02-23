@@ -28,13 +28,18 @@ func (b *blockManager) getMwebHeaders(lastHeight uint32) error {
 		height = 432
 	}
 
+	heightMap, err := b.cfg.MwebCoins.GetLeavesAtHeight()
+	if err != nil {
+		return err
+	}
+
 	fetch := func(height, stride uint32) error {
 		for height < lastHeight {
 			toHeight := height + 1000*stride
 			if toHeight > lastHeight {
 				toHeight = lastHeight
 			}
-			err := b.getMwebHeaderBatch(height, toHeight, stride)
+			err := b.getMwebHeaderBatch(height, toHeight, stride, heightMap)
 			if err != nil {
 				return err
 			}
@@ -53,15 +58,18 @@ func (b *blockManager) getMwebHeaders(lastHeight uint32) error {
 	return nil
 }
 
-func (b *blockManager) getMwebHeaderBatch(
-	fromHeight, toHeight, stride uint32) error {
+func (b *blockManager) getMwebHeaderBatch(fromHeight, toHeight,
+	stride uint32, heightMap map[uint32]uint64) error {
 
-	log.Infof("Fetching mweb headers from height %v to %v",
+	log.Debugf("Fetching mweb headers from height %v to %v",
 		fromHeight, toHeight)
 
 	var queryMsgs []wire.Message
 	var heights []uint32
 	for height := fromHeight; height < toHeight; height += stride {
+		if _, ok := heightMap[height]; ok {
+			continue
+		}
 		header, err := b.cfg.BlockHeaders.FetchHeaderByHeight(height)
 		if err != nil {
 			return err
@@ -85,7 +93,7 @@ func (b *blockManager) getMwebHeaderBatch(
 
 	// We'll also create an additional map that we'll use to
 	// re-order the responses as we get them in.
-	queryResponses := make(map[uint32]*wire.MsgMwebHeader, len(heights))
+	queryResponses := make(map[uint32]uint64, len(heights))
 
 	batchesCount := len(queryMsgs)
 	if batchesCount == 0 {
@@ -113,7 +121,7 @@ func (b *blockManager) getMwebHeaderBatch(
 
 	// Keep waiting for more mweb headers as long as we haven't received an
 	// answer for our last getdata message, and no error is encountered.
-	for i := 0; i < len(heights); {
+	for len(queryResponses) < len(heights) {
 		var r *wire.MsgMwebHeader
 		select {
 		case r = <-headersChan:
@@ -142,50 +150,10 @@ func (b *blockManager) getMwebHeaderBatch(
 		log.Debugf("Got mwebheader at height=%v, block hash=%v",
 			height, blockHash)
 
-		// If this is out of order but not yet written, we can
-		// store them for later.
-		if height > heights[i] {
-			log.Debugf("Got response for mwebheader at "+
-				"height=%v, only at height=%v, stashing",
-				height, heights[i])
-		}
-
-		// If this is out of order stuff that's already been
-		// written, we can ignore it.
-		if height < heights[i] {
-			log.Debugf("Received out of order reply "+
-				"height=%v, already written", height)
-			continue
-		}
-
-		// Add the verified response to our cache.
-		queryResponses[height] = r
-
-		// Then, we cycle through any cached messages, adding
-		// them to the batch and deleting them from the cache.
-		for i < len(heights) {
-			// If we don't yet have the next response, then
-			// we'll break out so we can wait for the peers
-			// to respond with this message.
-			r, ok := queryResponses[heights[i]]
-			if !ok {
-				break
-			}
-
-			// We have another response to write, so delete
-			// it from the cache and write it.
-			delete(queryResponses, heights[i])
-
-			log.Debugf("Writing mwebheader at height=%v", heights[i])
-
-			log.Infof("Height = %v, OutputMMRSize = %v", heights[i], r.MwebHeader.OutputMMRSize)
-
-			// Update the next index to write.
-			i++
-		}
+		queryResponses[height] = r.MwebHeader.OutputMMRSize
 	}
 
-	return nil
+	return b.cfg.MwebCoins.PutLeavesAtHeight(queryResponses)
 }
 
 // requests creates the query.Requests for this mwebheader query.
