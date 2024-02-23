@@ -2,7 +2,6 @@ package neutrino
 
 import (
 	"cmp"
-	"fmt"
 	"slices"
 
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
@@ -18,12 +17,14 @@ type mwebUtxosQuery struct {
 	blockMgr   *blockManager
 	mwebHeader *wire.MwebHeader
 	leafset    mweb.Leafset
-	msgs       []wire.Message
+	lastHeight uint32
+	msgs       []*wire.MsgGetMwebUtxos
 	utxosChan  chan *wire.MsgMwebUtxos
 }
 
 func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
-	newLeafset mweb.Leafset, lastHeight uint32, lastHash *chainhash.Hash) {
+	newLeafset mweb.Leafset, lastHeight uint32,
+	lastHash *chainhash.Hash) error {
 
 	log.Infof("Fetching set of mweb utxos from "+
 		"height=%v, hash=%v", lastHeight, *lastHash)
@@ -31,7 +32,8 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 	newNumLeaves := mwebHeader.OutputMMRSize
 	dbLeafset, oldNumLeaves, err := b.cfg.MwebCoins.GetLeafSet()
 	if err != nil {
-		panic(fmt.Sprintf("couldn't read mweb coins db: %v", err))
+		log.Errorf("Couldn't read mweb coins db: %v", err)
+		return err
 	}
 	oldLeafset := mweb.Leafset(dbLeafset)
 
@@ -74,54 +76,64 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 	}
 	addLeafSpan()
 
-	var queryMsgs []wire.Message
-	for _, addLeaf := range addedLeaves {
-		queryMsgs = append(queryMsgs,
-			wire.NewMsgGetMwebUtxos(*lastHash, addLeaf.start,
-				addLeaf.count, wire.MwebNetUtxoCompact))
-	}
-
-	// We'll also create an additional map that we'll use to
-	// re-order the responses as we get them in.
-	queryResponses := make(map[uint64]*wire.MsgMwebUtxos, len(queryMsgs))
-
 	b.mwebUtxosCallbacksMtx.Lock()
 	defer b.mwebUtxosCallbacksMtx.Unlock()
 
-	batchesCount := len(queryMsgs)
+	batchesCount := len(addedLeaves)
 	if batchesCount == 0 {
-		b.purgeSpentMwebTxos(newLeafset, newNumLeaves, removedLeaves)
-		return
+		return b.purgeSpentMwebTxos(newLeafset, newNumLeaves, removedLeaves)
 	}
 
 	log.Infof("Starting to query for mweb utxos from index=%v", addedLeaves[0].start)
 	log.Infof("Attempting to query for %v mwebutxos batches", batchesCount)
 
-	// With the set of messages constructed, we'll now request the batch
-	// all at once. This message will distribute the mwebutxos requests
-	// amongst all active peers, effectively sharding each query
-	// dynamically.
-	utxosChan := make(chan *wire.MsgMwebUtxos, len(queryMsgs))
-	q := mwebUtxosQuery{
+	// With the set of messages constructed, we'll now request the
+	// batch all at once. This message will distribute the mwebutxos
+	// requests amongst all active peers, effectively sharding each
+	// query dynamically.
+	q := &mwebUtxosQuery{
 		blockMgr:   b,
 		mwebHeader: mwebHeader,
 		leafset:    newLeafset,
-		msgs:       queryMsgs,
-		utxosChan:  utxosChan,
+		lastHeight: lastHeight,
+		utxosChan:  make(chan *wire.MsgMwebUtxos),
 	}
 
-	// Hand the queries to the work manager, and consume the verified
-	// responses as they come back.
+	totalUtxos := 0
+	for len(addedLeaves) > 0 {
+		for _, addLeaf := range addedLeaves {
+			q.msgs = append(q.msgs, wire.NewMsgGetMwebUtxos(*lastHash,
+				addLeaf.start, addLeaf.count, wire.MwebNetUtxoCompact))
+			if len(q.msgs) == 10 {
+				break
+			}
+		}
+		addedLeaves = addedLeaves[len(q.msgs):]
+
+		count, err := b.getMwebUtxosBatch(q)
+		if err != nil {
+			return err
+		}
+		totalUtxos += count
+	}
+
+	log.Infof("Successfully got %v mweb utxos", totalUtxos)
+
+	return b.purgeSpentMwebTxos(newLeafset, newNumLeaves, removedLeaves)
+}
+
+func (b *blockManager) getMwebUtxosBatch(q *mwebUtxosQuery) (int, error) {
+	// Hand the queries to the work manager, and consume the
+	// verified responses as they come back.
 	errChan := b.cfg.QueryDispatcher.Query(
-		q.requests(), query.Cancel(b.quit),
-	)
+		q.requests(), query.Cancel(b.quit))
 
 	// Load the block height to leaf count mapping so that we can
 	// work out roughly when a utxo was included in a block.
 	heightMap, err := b.cfg.MwebCoins.GetLeavesAtHeight()
 	if err != nil {
-		log.Errorf("could not get leaves at height from db: %v", err)
-		return
+		log.Errorf("Couldn't get leaves at height from db: %v", err)
+		return 0, err
 	}
 	heights := make([]uint32, 0, len(heightMap))
 	for height := range heightMap {
@@ -132,112 +144,75 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 	// Keep waiting for more mwebutxos as long as we haven't received an
 	// answer for our last getmwebutxos, and no error is encountered.
 	totalUtxos := 0
-	for i := 0; i < len(addedLeaves); {
+	for len(q.msgs) > 0 {
 		var r *wire.MsgMwebUtxos
 		select {
-		case r = <-utxosChan:
+		case r = <-q.utxosChan:
 		case err := <-errChan:
 			switch {
 			case err == query.ErrWorkManagerShuttingDown:
-				return
+				return totalUtxos, ErrShuttingDown
 			case err != nil:
 				log.Errorf("Query finished with error before "+
 					"all responses received: %v", err)
-				return
+				return totalUtxos, err
 			}
 
-			// The query did finish successfully, but continue to
-			// allow picking up the last mwebutxos sent on the
-			// utxosChan.
+			// The query did finish successfully, but continue to allow
+			// picking up the last mwebutxos sent on the utxosChan.
 			continue
 
 		case <-b.quit:
-			return
+			return totalUtxos, ErrShuttingDown
 		}
 
 		// Find the first and last indices for the mweb utxos
 		// represented by this message.
 		startIndex := r.Utxos[0].LeafIndex
 		lastIndex := r.Utxos[len(r.Utxos)-1].LeafIndex
-		curIndex := addedLeaves[i].start
 
-		log.Debugf("Got mwebutxos from index=%v to "+
-			"index=%v, block hash=%v", startIndex,
-			lastIndex, r.BlockHash)
-
-		// If this is out of order but not yet written, we can
-		// store them for later.
-		if startIndex > curIndex {
-			log.Debugf("Got response for mwebutxos at "+
-				"index=%v, only at index=%v, stashing",
-				startIndex, curIndex)
-		}
-
-		// If this is out of order stuff that's already been
-		// written, we can ignore it.
-		if lastIndex < curIndex {
-			log.Debugf("Received out of order reply "+
-				"lastIndex=%v, already written", lastIndex)
+		index, ok := slices.BinarySearchFunc(q.msgs, startIndex,
+			func(msg *wire.MsgGetMwebUtxos, target uint64) int {
+				return cmp.Compare(msg.StartIndex, target)
+			})
+		if !ok {
 			continue
 		}
+		q.msgs = append(q.msgs[:index], q.msgs[index+1:]...)
 
-		// Add the verified response to our cache.
-		queryResponses[startIndex] = r
+		log.Debugf("Got mwebutxos from index=%v to index=%v, "+
+			"block hash=%v", startIndex, lastIndex, r.BlockHash)
 
-		// Then, we cycle through any cached messages, adding
-		// them to the batch and deleting them from the cache.
-		for i < len(addedLeaves) {
-			// If we don't yet have the next response, then
-			// we'll break out so we can wait for the peers
-			// to respond with this message.
-			curIndex = addedLeaves[i].start
-			r, ok := queryResponses[curIndex]
-			if !ok {
-				break
+		// Calculate rough heights for each utxo.
+		for _, utxo := range r.Utxos {
+			index, _ := slices.BinarySearchFunc(heights, utxo.LeafIndex,
+				func(height uint32, target uint64) int {
+					return cmp.Compare(heightMap[height]-1, target)
+				})
+			if index < len(heights) {
+				utxo.Height = int32(heights[index])
+			} else {
+				utxo.Height = int32(q.lastHeight)
 			}
-
-			// We have another response to write, so delete
-			// it from the cache and write it.
-			delete(queryResponses, curIndex)
-
-			log.Debugf("Writing mwebutxos at index=%v", curIndex)
-
-			// Calculate rough heights for each utxo.
-			for _, utxo := range r.Utxos {
-				index, _ := slices.BinarySearchFunc(heights, utxo.LeafIndex,
-					func(height uint32, leafIndex uint64) int {
-						return cmp.Compare(heightMap[height]-1, leafIndex)
-					})
-				if index < len(heights) {
-					utxo.Height = int32(heights[index])
-				} else {
-					utxo.Height = int32(lastHeight)
-				}
-			}
-
-			err := b.cfg.MwebCoins.PutCoins(r.Utxos)
-			if err != nil {
-				panic(fmt.Sprintf("couldn't write mweb coins: %v", err))
-			}
-
-			for _, cb := range b.mwebUtxosCallbacks {
-				cb(nil, r.Utxos)
-			}
-
-			totalUtxos += len(r.Utxos)
-
-			// Update the next index to write.
-			i++
 		}
+
+		if err := b.cfg.MwebCoins.PutCoins(r.Utxos); err != nil {
+			log.Errorf("Couldn't write mweb coins: %v", err)
+			return totalUtxos, err
+		}
+
+		for _, cb := range b.mwebUtxosCallbacks {
+			cb(nil, r.Utxos)
+		}
+
+		totalUtxos += len(r.Utxos)
 	}
 
-	log.Infof("Successfully got %v mweb utxos", totalUtxos)
-
-	b.purgeSpentMwebTxos(newLeafset, newNumLeaves, removedLeaves)
+	return totalUtxos, nil
 }
 
 func (b *blockManager) purgeSpentMwebTxos(newLeafset mweb.Leafset,
-	newNumLeaves uint64, removedLeaves []uint64) {
+	newNumLeaves uint64, removedLeaves []uint64) error {
 
 	if len(removedLeaves) > 0 {
 		log.Infof("Purging %v spent mweb txos from db", len(removedLeaves))
@@ -246,12 +221,15 @@ func (b *blockManager) purgeSpentMwebTxos(newLeafset mweb.Leafset,
 	err := b.cfg.MwebCoins.PutLeafSetAndPurge(
 		newLeafset, newNumLeaves, removedLeaves)
 	if err != nil {
-		panic(fmt.Sprintf("couldn't purge mweb txos: %v", err))
+		log.Errorf("Couldn't purge mweb txos: %v", err)
+		return err
 	}
 
 	for _, cb := range b.mwebUtxosCallbacks {
 		cb(newLeafset, nil)
 	}
+
+	return nil
 }
 
 // requests creates the query.Requests for this mwebutxos query.
@@ -266,28 +244,22 @@ func (m *mwebUtxosQuery) requests() []*query.Request {
 	return reqs
 }
 
-// handleResponse is the internal response handler used for requests for this
-// mwebutxos query.
+// handleResponse is the internal response handler used for requests
+// for this mwebutxos query.
 func (m *mwebUtxosQuery) handleResponse(req, resp wire.Message,
 	peerAddr string) query.Progress {
 
 	r, ok := resp.(*wire.MsgMwebUtxos)
 	if !ok {
 		// We are only looking for mwebutxos messages.
-		return query.Progress{
-			Finished:   false,
-			Progressed: false,
-		}
+		return query.Progress{}
 	}
 
 	q, ok := req.(*wire.MsgGetMwebUtxos)
 	if !ok {
-		// We sent a getmwebutxos message, so that's what we should be
-		// comparing against.
-		return query.Progress{
-			Finished:   false,
-			Progressed: false,
-		}
+		// We sent a getmwebutxos message, so that's what
+		// we should be comparing against.
+		return query.Progress{}
 	}
 
 	// The response doesn't match the query.
@@ -295,30 +267,21 @@ func (m *mwebUtxosQuery) handleResponse(req, resp wire.Message,
 		q.StartIndex != r.StartIndex ||
 		q.OutputFormat != r.OutputFormat ||
 		q.NumRequested != uint16(len(r.Utxos)) {
-		return query.Progress{
-			Finished:   false,
-			Progressed: false,
-		}
+		return query.Progress{}
 	}
 
 	if !mweb.VerifyUtxos(m.mwebHeader, m.leafset, r) {
 		log.Warnf("Failed to verify mweb utxos at index %v!!!",
 			r.StartIndex)
 
-		// If the peer gives us a bad mwebutxos message,
-		// then we'll ban the peer so we can re-allocate
-		// the query elsewhere.
-		err := m.blockMgr.cfg.BanPeer(
-			peerAddr, banman.InvalidMwebUtxos,
-		)
+		// If the peer gives us a bad mwebutxos message, then we'll
+		// ban the peer so we can reallocate the query elsewhere.
+		err := m.blockMgr.cfg.BanPeer(peerAddr, banman.InvalidMwebUtxos)
 		if err != nil {
 			log.Errorf("Unable to ban peer %v: %v", peerAddr, err)
 		}
 
-		return query.Progress{
-			Finished:   false,
-			Progressed: false,
-		}
+		return query.Progress{}
 	}
 
 	// At this point, the response matches the query,
@@ -329,16 +292,10 @@ func (m *mwebUtxosQuery) handleResponse(req, resp wire.Message,
 	select {
 	case m.utxosChan <- r:
 	case <-m.blockMgr.quit:
-		return query.Progress{
-			Finished:   false,
-			Progressed: false,
-		}
+		return query.Progress{}
 	}
 
-	return query.Progress{
-		Finished:   true,
-		Progressed: true,
-	}
+	return query.Progress{Finished: true, Progressed: true}
 }
 
 func (b *blockManager) notifyAddedMwebUtxos(leafSet []byte) error {
