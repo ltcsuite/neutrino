@@ -18,6 +18,8 @@ type mwebUtxosQuery struct {
 	mwebHeader *wire.MwebHeader
 	leafset    mweb.Leafset
 	lastHeight uint32
+	heights    []uint32
+	heightMap  map[uint32]uint64
 	msgs       []*wire.MsgGetMwebUtxos
 	utxosChan  chan *wire.MsgMwebUtxos
 }
@@ -87,6 +89,19 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 	log.Infof("Starting to query for mweb utxos from index=%v", addedLeaves[0].start)
 	log.Infof("Attempting to query for %v mwebutxos batches", batchesCount)
 
+	// Load the block height to leaf count mapping so that we can
+	// work out roughly when a utxo was included in a block.
+	heightMap, err := b.cfg.MwebCoins.GetLeavesAtHeight()
+	if err != nil {
+		log.Errorf("Couldn't get leaves at height from db: %v", err)
+		return err
+	}
+	heights := make([]uint32, 0, len(heightMap))
+	for height := range heightMap {
+		heights = append(heights, height)
+	}
+	slices.Sort(heights)
+
 	// With the set of messages constructed, we'll now request the
 	// batch all at once. This message will distribute the mwebutxos
 	// requests amongst all active peers, effectively sharding each
@@ -96,6 +111,8 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 		mwebHeader: mwebHeader,
 		leafset:    newLeafset,
 		lastHeight: lastHeight,
+		heights:    heights,
+		heightMap:  heightMap,
 		utxosChan:  make(chan *wire.MsgMwebUtxos),
 	}
 
@@ -127,19 +144,6 @@ func (b *blockManager) getMwebUtxosBatch(q *mwebUtxosQuery) (int, error) {
 	// verified responses as they come back.
 	errChan := b.cfg.QueryDispatcher.Query(
 		q.requests(), query.Cancel(b.quit))
-
-	// Load the block height to leaf count mapping so that we can
-	// work out roughly when a utxo was included in a block.
-	heightMap, err := b.cfg.MwebCoins.GetLeavesAtHeight()
-	if err != nil {
-		log.Errorf("Couldn't get leaves at height from db: %v", err)
-		return 0, err
-	}
-	heights := make([]uint32, 0, len(heightMap))
-	for height := range heightMap {
-		heights = append(heights, height)
-	}
-	slices.Sort(heights)
 
 	// Keep waiting for more mwebutxos as long as we haven't received an
 	// answer for our last getmwebutxos, and no error is encountered.
@@ -185,12 +189,12 @@ func (b *blockManager) getMwebUtxosBatch(q *mwebUtxosQuery) (int, error) {
 
 		// Calculate rough heights for each utxo.
 		for _, utxo := range r.Utxos {
-			index, _ := slices.BinarySearchFunc(heights, utxo.LeafIndex,
+			index, _ := slices.BinarySearchFunc(q.heights, utxo.LeafIndex,
 				func(height uint32, target uint64) int {
-					return cmp.Compare(heightMap[height]-1, target)
+					return cmp.Compare(q.heightMap[height]-1, target)
 				})
-			if index < len(heights) {
-				utxo.Height = int32(heights[index])
+			if index < len(q.heights) {
+				utxo.Height = int32(q.heights[index])
 			} else {
 				utxo.Height = int32(q.lastHeight)
 			}
