@@ -511,7 +511,7 @@ func (b *blockManager) mwebHandler() {
 		if rollbackHeight > 0 {
 			if lastHeight-rollbackHeight > 10 {
 				err = b.cfg.MwebCoins.PurgeCoins()
-			} else {
+			} else if rollbackHeight < lastHeight {
 				lastHeight = rollbackHeight
 				lastHeader, err = b.cfg.BlockHeaders.
 					FetchHeaderByHeight(lastHeight)
