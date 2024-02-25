@@ -222,7 +222,7 @@ type blockManager struct { // nolint:maligned
 
 	requestedTxns map[chainhash.Hash]struct{}
 
-	mwebUtxosCallbacksMtx sync.RWMutex
+	mwebUtxosCallbacksMtx sync.Mutex
 	mwebUtxosCallbacks    []func([]byte, []*wire.MwebNetUtxo)
 }
 
@@ -502,16 +502,36 @@ func (b *blockManager) mwebHandler() {
 			log.Critical(err)
 			return
 		}
+
+		rollbackHeight, err := b.cfg.MwebCoins.GetRollbackHeight()
+		if err != nil {
+			log.Critical(err)
+			return
+		}
+		if rollbackHeight > 0 {
+			if lastHeight-rollbackHeight > 10 {
+				err = b.cfg.MwebCoins.PurgeCoins()
+			} else {
+				lastHeight = rollbackHeight
+				lastHeader, err = b.cfg.BlockHeaders.
+					FetchHeaderByHeight(lastHeight)
+			}
+			if err != nil {
+				log.Critical(err)
+				return
+			}
+		}
+
 		lastHash := lastHeader.BlockHash()
 
 		log.Infof("Starting mweb sync at (block_height=%v, block_hash=%v)",
 			lastHeight, lastHash)
 
 		// Get a representative set of mweb headers up to this height.
-		if err := b.getMwebHeaders(lastHeight); err != nil {
-			if err == ErrShuttingDown {
-				return
-			}
+		err = b.getMwebHeaders(lastHeight)
+		if err == ErrShuttingDown {
+			return
+		} else if err != nil {
 			log.Error(err)
 			continue
 		}
@@ -536,7 +556,7 @@ func (b *blockManager) mwebHandler() {
 						return
 					}
 					if err := mweb.VerifyHeader(m); err != nil {
-						log.Infof("failed to verify mwebheader: %v", err)
+						log.Infof("Failed to verify mwebheader: %v", err)
 						return
 					}
 					mwebHeader = m
@@ -554,7 +574,7 @@ func (b *blockManager) mwebHandler() {
 
 				err := mweb.VerifyLeafset(mwebHeader, mwebLeafset)
 				if err != nil {
-					log.Infof("failed to verify mwebleafset: %v", err)
+					log.Infof("Failed to verify mwebleafset: %v", err)
 					return
 				}
 
@@ -580,7 +600,8 @@ func (b *blockManager) mwebHandler() {
 		err = b.cfg.MwebCoins.PutLeavesAtHeight(map[uint32]uint64{
 			lastHeight: mwebHeader.MwebHeader.OutputMMRSize})
 		if err != nil {
-			log.Errorf("failed to write mwebheader to db: %v", err)
+			log.Critical(err)
+			return
 		}
 
 		// Get all the mweb utxos at this height.
@@ -588,6 +609,12 @@ func (b *blockManager) mwebHandler() {
 			mwebLeafset.Leafset, lastHeight, &lastHash)
 		if err != nil {
 			continue
+		}
+
+		err = b.cfg.MwebCoins.PutRollbackHeight(0)
+		if err != nil {
+			log.Critical(err)
+			return
 		}
 
 		// Now we check the headers again. If the block headers are not yet
@@ -1460,6 +1487,11 @@ func (b *blockManager) rollBackToHeight(height uint32) error {
 	}
 
 	_, regHeight, err := b.cfg.RegFilterHeaders.ChainTip()
+	if err != nil {
+		return err
+	}
+
+	err = b.cfg.MwebCoins.PutRollbackHeight(height)
 	if err != nil {
 		return err
 	}

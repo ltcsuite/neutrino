@@ -44,6 +44,12 @@ var (
 // CoinDatabase is an interface which represents an object that is capable of
 // storing and retrieving coins according to their corresponding output ID.
 type CoinDatabase interface {
+	// Get rollback height.
+	GetRollbackHeight() (uint32, error)
+
+	// Set rollback height.
+	PutRollbackHeight(uint32) error
+
 	// Get the block height to number of leaves mapping.
 	GetLeavesAtHeight() (map[uint32]uint64, error)
 
@@ -114,6 +120,41 @@ func NewCoinStore(db walletdb.DB) (*CoinStore, error) {
 	}
 
 	return &CoinStore{db: db}, nil
+}
+
+// Get rollback height.
+//
+// NOTE: This method is a part of the CoinDatabase interface.
+func (c *CoinStore) GetRollbackHeight() (height uint32, err error) {
+	err = walletdb.View(c.db, func(tx walletdb.ReadTx) error {
+		rootBucket := tx.ReadBucket(rootBucket)
+
+		b := rootBucket.Get([]byte("rollbackHeight"))
+		if b != nil {
+			if len(b) != 4 {
+				return ErrUnexpectedValueLen
+			}
+			height = binary.LittleEndian.Uint32(b)
+		}
+		return nil
+	})
+	return
+}
+
+// Set rollback height.
+//
+// NOTE: This method is a part of the CoinDatabase interface.
+func (c *CoinStore) PutRollbackHeight(height uint32) error {
+	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
+		rootBucket := tx.ReadWriteBucket(rootBucket)
+
+		k := []byte("rollbackHeight")
+		if height == 0 {
+			return rootBucket.Delete(k)
+		}
+		b := binary.LittleEndian.AppendUint32(nil, height)
+		return rootBucket.Put(k, b)
+	})
 }
 
 // Get the block height to number of leaves mapping.
@@ -342,15 +383,11 @@ func (c *CoinStore) FetchLeaves(leaves []uint64) ([]*wire.MwebNetUtxo, error) {
 // NOTE: This method is a part of the CoinDatabase interface.
 func (c *CoinStore) PurgeCoins() error {
 	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
-		rootBucket := tx.ReadWriteBucket(rootBucket)
-
-		if err := rootBucket.DeleteNestedBucket(heightBucket); err != nil {
+		if err := tx.DeleteTopLevelBucket(rootBucket); err != nil {
 			return err
 		}
-		if err := rootBucket.DeleteNestedBucket(coinBucket); err != nil {
-			return err
-		}
-		if err := rootBucket.DeleteNestedBucket(leafBucket); err != nil {
+		rootBucket, err := tx.CreateTopLevelBucket(rootBucket)
+		if err != nil {
 			return err
 		}
 
