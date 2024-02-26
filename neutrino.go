@@ -1183,7 +1183,7 @@ func (s *ChainService) NetTotals() (uint64, uint64) {
 }
 
 // RegisterMempoolCallback registers a callback to be fired whenever a
-// new transaction is received into the mempool
+// new transaction is received into the mempool.
 func (s *ChainService) RegisterMempoolCallback(onRecvTx func(*ltcutil.Tx)) {
 	s.mempool.RegisterCallback(onRecvTx)
 }
@@ -1195,7 +1195,7 @@ func (s *ChainService) NotifyMempoolReceived(addrs []ltcutil.Address) {
 }
 
 // RegisterMwebUtxosCallback registers a callback to be fired whenever
-// new mweb utxos are received
+// new mweb utxos are received.
 func (s *ChainService) RegisterMwebUtxosCallback(
 	onMwebUtxos func(*mweb.Leafset, []*wire.MwebNetUtxo)) {
 

@@ -58,11 +58,11 @@ type CoinDatabase interface {
 	PutLeavesAtHeight(map[uint32]uint64) error
 
 	// Get the leafset marking the unspent indices.
-	GetLeafset() (leafset *mweb.Leafset, err error)
+	GetLeafset() (*mweb.Leafset, error)
 
 	// Set the leafset and purge the specified leaves and their
 	// associated coins from persistent storage.
-	PutLeafsetAndPurge(leafset *mweb.Leafset, removedLeaves []uint64) error
+	PutLeafsetAndPurge(*mweb.Leafset, []uint64) error
 
 	// PutCoins stores coins to persistent storage.
 	PutCoins([]*wire.MwebNetUtxo) error
