@@ -1,4 +1,4 @@
-package mweb
+package mwebdb
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
+	"github.com/ltcsuite/ltcd/ltcutil/mweb"
 	"github.com/ltcsuite/ltcd/wire"
 	"github.com/ltcsuite/ltcwallet/walletdb"
 )
@@ -57,12 +58,11 @@ type CoinDatabase interface {
 	PutLeavesAtHeight(map[uint32]uint64) error
 
 	// Get the leafset marking the unspent indices.
-	GetLeafset() (leafset []byte, numLeaves uint64, err error)
+	GetLeafset() (leafset *mweb.Leafset, err error)
 
 	// Set the leafset and purge the specified leaves and their
 	// associated coins from persistent storage.
-	PutLeafsetAndPurge(leafset []byte, numLeaves uint64,
-		removedLeaves []uint64) error
+	PutLeafsetAndPurge(leafset *mweb.Leafset, removedLeaves []uint64) error
 
 	// PutCoins stores coins to persistent storage.
 	PutCoins([]*wire.MwebNetUtxo) error
@@ -199,25 +199,16 @@ func (c *CoinStore) PutLeavesAtHeight(m map[uint32]uint64) error {
 // Get the leafset marking the unspent indices.
 //
 // NOTE: This method is a part of the CoinDatabase interface.
-func (c *CoinStore) GetLeafset() (leafset []byte, numLeaves uint64, err error) {
+func (c *CoinStore) GetLeafset() (leafset *mweb.Leafset, err error) {
+	leafset = &mweb.Leafset{}
 	err = walletdb.View(c.db, func(tx walletdb.ReadTx) error {
 		rootBucket := tx.ReadBucket(rootBucket)
 
-		leafset = bytes.Clone(rootBucket.Get([]byte("leafset")))
-		if leafset == nil {
-			return nil
-		}
-
-		b := rootBucket.Get([]byte("numLeaves"))
+		b := rootBucket.Get([]byte("leafset"))
 		if b == nil {
-			leafset = nil
 			return nil
 		}
-		if len(b) != 8 {
-			return ErrUnexpectedValueLen
-		}
-		numLeaves = binary.LittleEndian.Uint64(b)
-		return nil
+		return leafset.Deserialize(bytes.NewReader(b))
 	})
 	return
 }
@@ -226,21 +217,20 @@ func (c *CoinStore) GetLeafset() (leafset []byte, numLeaves uint64, err error) {
 // coins from persistent storage.
 //
 // NOTE: This method is a part of the CoinDatabase interface.
-func (c *CoinStore) PutLeafsetAndPurge(leafset []byte,
-	numLeaves uint64, removedLeaves []uint64) error {
+func (c *CoinStore) PutLeafsetAndPurge(leafset *mweb.Leafset,
+	removedLeaves []uint64) error {
 
 	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
 		rootBucket := tx.ReadWriteBucket(rootBucket)
 		coinBucket := rootBucket.NestedReadWriteBucket(coinBucket)
 		leafBucket := rootBucket.NestedReadWriteBucket(leafBucket)
 
-		err := rootBucket.Put([]byte("leafset"), leafset)
+		var buf bytes.Buffer
+		err := leafset.Serialize(&buf)
 		if err != nil {
 			return err
 		}
-
-		b := binary.LittleEndian.AppendUint64(nil, numLeaves)
-		err = rootBucket.Put([]byte("numLeaves"), b)
+		err = rootBucket.Put([]byte("leafset"), buf.Bytes())
 		if err != nil {
 			return err
 		}

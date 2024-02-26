@@ -18,13 +18,14 @@ import (
 	"github.com/ltcsuite/ltcd/ltcutil"
 	"github.com/ltcsuite/ltcd/ltcutil/gcs"
 	"github.com/ltcsuite/ltcd/ltcutil/gcs/builder"
+	"github.com/ltcsuite/ltcd/ltcutil/mweb"
 	"github.com/ltcsuite/ltcd/wire"
 	"github.com/ltcsuite/neutrino/banman"
 	"github.com/ltcsuite/neutrino/blockntfns"
 	"github.com/ltcsuite/neutrino/chainsync"
 	"github.com/ltcsuite/neutrino/headerfs"
 	"github.com/ltcsuite/neutrino/headerlist"
-	"github.com/ltcsuite/neutrino/mweb"
+	"github.com/ltcsuite/neutrino/mwebdb"
 	"github.com/ltcsuite/neutrino/query"
 )
 
@@ -95,7 +96,7 @@ type blockManagerCfg struct {
 	RegFilterHeaders *headerfs.FilterHeaderStore
 
 	// MwebCoins is the store where mweb coins are persistently stored.
-	MwebCoins mweb.CoinDatabase
+	MwebCoins mwebdb.CoinDatabase
 
 	// TimeSource is used to access a time estimate based on the clocks of
 	// the connected peers.
@@ -223,7 +224,7 @@ type blockManager struct { // nolint:maligned
 	requestedTxns map[chainhash.Hash]struct{}
 
 	mwebUtxosCallbacksMtx sync.Mutex
-	mwebUtxosCallbacks    []func([]byte, []*wire.MwebNetUtxo)
+	mwebUtxosCallbacks    []func(*mweb.Leafset, []*wire.MwebNetUtxo)
 }
 
 // newBlockManager returns a new bitcoin block manager.  Use Start to begin
@@ -596,17 +597,22 @@ func (b *blockManager) mwebHandler() {
 		log.Infof("Verified mwebheader and mwebleafset at "+
 			"(block_height=%v, block_hash=%v)", lastHeight, lastHash)
 
+		leafset := &mweb.Leafset{
+			Bits:   mwebLeafset.Leafset,
+			Size:   mwebHeader.MwebHeader.OutputMMRSize,
+			Height: lastHeight,
+		}
+
 		// Store the leaf count at this height.
 		err = b.cfg.MwebCoins.PutLeavesAtHeight(map[uint32]uint64{
-			lastHeight: mwebHeader.MwebHeader.OutputMMRSize})
+			leafset.Height: leafset.Size})
 		if err != nil {
 			log.Critical(err)
 			return
 		}
 
 		// Get all the mweb utxos at this height.
-		err = b.getMwebUtxos(&mwebHeader.MwebHeader,
-			mwebLeafset.Leafset, lastHeight, &lastHash)
+		err = b.getMwebUtxos(&mwebHeader.MwebHeader, leafset, &lastHash)
 		if err != nil {
 			continue
 		}
@@ -3320,7 +3326,7 @@ func (l *lightHeaderCtx) RelativeAncestorCtx(
 // RegisterMwebUtxosCallback will register a callback that will fire when
 // new mweb utxos are received.
 func (b *blockManager) RegisterMwebUtxosCallback(
-	onMwebUtxos func([]byte, []*wire.MwebNetUtxo)) {
+	onMwebUtxos func(*mweb.Leafset, []*wire.MwebNetUtxo)) {
 
 	b.mwebUtxosCallbacksMtx.Lock()
 	defer b.mwebUtxosCallbacksMtx.Unlock()

@@ -3,9 +3,9 @@ package neutrino
 import (
 	"slices"
 
+	"github.com/ltcsuite/ltcd/ltcutil/mweb"
 	"github.com/ltcsuite/ltcd/wire"
 	"github.com/ltcsuite/neutrino/banman"
-	"github.com/ltcsuite/neutrino/mweb"
 	"github.com/ltcsuite/neutrino/query"
 )
 

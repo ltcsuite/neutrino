@@ -5,9 +5,9 @@ import (
 	"slices"
 
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
+	"github.com/ltcsuite/ltcd/ltcutil/mweb"
 	"github.com/ltcsuite/ltcd/wire"
 	"github.com/ltcsuite/neutrino/banman"
-	"github.com/ltcsuite/neutrino/mweb"
 	"github.com/ltcsuite/neutrino/query"
 )
 
@@ -16,8 +16,7 @@ import (
 type mwebUtxosQuery struct {
 	blockMgr   *blockManager
 	mwebHeader *wire.MwebHeader
-	leafset    mweb.Leafset
-	lastHeight uint32
+	leafset    *mweb.Leafset
 	heights    []uint32
 	heightMap  map[uint32]uint64
 	msgs       []*wire.MsgGetMwebUtxos
@@ -25,27 +24,25 @@ type mwebUtxosQuery struct {
 }
 
 func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
-	newLeafset mweb.Leafset, lastHeight uint32,
-	lastHash *chainhash.Hash) error {
+	newLeafset *mweb.Leafset, blockHash *chainhash.Hash) error {
 
 	log.Infof("Fetching set of mweb utxos from "+
-		"height=%v, hash=%v", lastHeight, *lastHash)
+		"height=%v, hash=%v", newLeafset.Height, *blockHash)
 
-	newNumLeaves := mwebHeader.OutputMMRSize
-	dbLeafset, oldNumLeaves, err := b.cfg.MwebCoins.GetLeafset()
+	oldLeafset, err := b.cfg.MwebCoins.GetLeafset()
 	if err != nil {
 		log.Errorf("Couldn't read mweb coins db: %v", err)
 		return err
 	}
-	oldLeafset := mweb.Leafset(dbLeafset)
 
 	// Skip over common prefix
 	var index uint64
-	for index < uint64(len(oldLeafset)) &&
-		index < uint64(len(newLeafset)) &&
-		oldLeafset[index] == newLeafset[index] {
+	for index < uint64(len(oldLeafset.Bits)) &&
+		index < uint64(len(newLeafset.Bits)) &&
+		oldLeafset.Bits[index] == newLeafset.Bits[index] {
 		index++
 	}
+	index *= 8
 
 	type span struct {
 		start uint64
@@ -60,7 +57,7 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 			addLeaf = span{}
 		}
 	}
-	for index *= 8; index < oldNumLeaves || index < newNumLeaves; index++ {
+	for ; index < oldLeafset.Size || index < newLeafset.Size; index++ {
 		if oldLeafset.Contains(index) {
 			addLeafSpan()
 			if !newLeafset.Contains(index) {
@@ -83,7 +80,7 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 
 	batchesCount := len(addedLeaves)
 	if batchesCount == 0 {
-		return b.purgeSpentMwebTxos(newLeafset, newNumLeaves, removedLeaves)
+		return b.purgeSpentMwebTxos(newLeafset, removedLeaves)
 	}
 
 	log.Infof("Starting to query for mweb utxos from index=%v", addedLeaves[0].start)
@@ -110,7 +107,6 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 		blockMgr:   b,
 		mwebHeader: mwebHeader,
 		leafset:    newLeafset,
-		lastHeight: lastHeight,
 		heights:    heights,
 		heightMap:  heightMap,
 		utxosChan:  make(chan *wire.MsgMwebUtxos),
@@ -119,7 +115,7 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 	totalUtxos := 0
 	for len(addedLeaves) > 0 {
 		for _, addLeaf := range addedLeaves {
-			q.msgs = append(q.msgs, wire.NewMsgGetMwebUtxos(*lastHash,
+			q.msgs = append(q.msgs, wire.NewMsgGetMwebUtxos(*blockHash,
 				addLeaf.start, addLeaf.count, wire.MwebNetUtxoCompact))
 			if len(q.msgs) == 10 {
 				break
@@ -136,7 +132,7 @@ func (b *blockManager) getMwebUtxos(mwebHeader *wire.MwebHeader,
 
 	log.Infof("Successfully got %v mweb utxos", totalUtxos)
 
-	return b.purgeSpentMwebTxos(newLeafset, newNumLeaves, removedLeaves)
+	return b.purgeSpentMwebTxos(newLeafset, removedLeaves)
 }
 
 func (b *blockManager) getMwebUtxosBatch(q *mwebUtxosQuery) (int, error) {
@@ -196,7 +192,7 @@ func (b *blockManager) getMwebUtxosBatch(q *mwebUtxosQuery) (int, error) {
 			if index < len(q.heights) {
 				utxo.Height = int32(q.heights[index])
 			} else {
-				utxo.Height = int32(q.lastHeight)
+				utxo.Height = int32(q.leafset.Height)
 			}
 		}
 
@@ -215,22 +211,21 @@ func (b *blockManager) getMwebUtxosBatch(q *mwebUtxosQuery) (int, error) {
 	return totalUtxos, nil
 }
 
-func (b *blockManager) purgeSpentMwebTxos(newLeafset mweb.Leafset,
-	newNumLeaves uint64, removedLeaves []uint64) error {
+func (b *blockManager) purgeSpentMwebTxos(
+	leafset *mweb.Leafset, removedLeaves []uint64) error {
 
 	if len(removedLeaves) > 0 {
 		log.Infof("Purging %v spent mweb txos from db", len(removedLeaves))
 	}
 
-	err := b.cfg.MwebCoins.PutLeafsetAndPurge(
-		newLeafset, newNumLeaves, removedLeaves)
+	err := b.cfg.MwebCoins.PutLeafsetAndPurge(leafset, removedLeaves)
 	if err != nil {
 		log.Errorf("Couldn't purge mweb txos: %v", err)
 		return err
 	}
 
 	for _, cb := range b.mwebUtxosCallbacks {
-		cb(newLeafset, nil)
+		cb(leafset, nil)
 	}
 
 	return nil
@@ -302,29 +297,26 @@ func (m *mwebUtxosQuery) handleResponse(req, resp wire.Message,
 	return query.Progress{Finished: true, Progressed: true}
 }
 
-func (b *blockManager) notifyAddedMwebUtxos(leafset []byte) error {
+func (b *blockManager) notifyAddedMwebUtxos(oldLeafset *mweb.Leafset) error {
 	b.mwebUtxosCallbacksMtx.Lock()
 	defer b.mwebUtxosCallbacksMtx.Unlock()
 
-	dbLeafset, newNumLeaves, err := b.cfg.MwebCoins.GetLeafset()
+	newLeafset, err := b.cfg.MwebCoins.GetLeafset()
 	if err != nil {
 		return err
 	}
-	oldLeafset := mweb.Leafset(leafset)
-	newLeafset := mweb.Leafset(dbLeafset)
 
 	// Skip over common prefix
 	var index uint64
-	for index < uint64(len(oldLeafset)) &&
-		index < uint64(len(newLeafset)) &&
-		oldLeafset[index] == newLeafset[index] {
+	for index < uint64(len(oldLeafset.Bits)) &&
+		index < uint64(len(newLeafset.Bits)) &&
+		oldLeafset.Bits[index] == newLeafset.Bits[index] {
 		index++
 	}
 
 	var addedLeaves []uint64
-	for index *= 8; index < newNumLeaves; index++ {
-		if !oldLeafset.Contains(index) &&
-			newLeafset.Contains(index) {
+	for index *= 8; index < newLeafset.Size; index++ {
+		if !oldLeafset.Contains(index) && newLeafset.Contains(index) {
 			addedLeaves = append(addedLeaves, index)
 		}
 	}

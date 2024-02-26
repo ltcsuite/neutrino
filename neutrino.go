@@ -19,6 +19,7 @@ import (
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
 	"github.com/ltcsuite/ltcd/connmgr"
 	"github.com/ltcsuite/ltcd/ltcutil"
+	"github.com/ltcsuite/ltcd/ltcutil/mweb"
 	"github.com/ltcsuite/ltcd/peer"
 	"github.com/ltcsuite/ltcd/wire"
 	"github.com/ltcsuite/ltcwallet/walletdb"
@@ -28,7 +29,7 @@ import (
 	"github.com/ltcsuite/neutrino/chanutils"
 	"github.com/ltcsuite/neutrino/filterdb"
 	"github.com/ltcsuite/neutrino/headerfs"
-	"github.com/ltcsuite/neutrino/mweb"
+	"github.com/ltcsuite/neutrino/mwebdb"
 	"github.com/ltcsuite/neutrino/pushtx"
 	"github.com/ltcsuite/neutrino/query"
 )
@@ -658,7 +659,7 @@ type ChainService struct { // nolint:maligned
 	FilterDB         filterdb.FilterDatabase
 	BlockHeaders     headerfs.BlockHeaderStore
 	RegFilterHeaders *headerfs.FilterHeaderStore
-	MwebCoinDB       mweb.CoinDatabase
+	MwebCoinDB       mwebdb.CoinDatabase
 	persistToDisk    bool
 
 	FilterCache *lru.Cache[FilterCacheKey, *CacheableFilter]
@@ -825,7 +826,7 @@ func NewChainService(cfg Config) (*ChainService, error) {
 		return nil, err
 	}
 
-	s.MwebCoinDB, err = mweb.NewCoinStore(cfg.Database)
+	s.MwebCoinDB, err = mwebdb.NewCoinStore(cfg.Database)
 	if err != nil {
 		return nil, err
 	}
@@ -1181,35 +1182,37 @@ func (s *ChainService) NetTotals() (uint64, uint64) {
 		atomic.LoadUint64(&s.bytesSent)
 }
 
-// RegisterMempoolCallback registers a callback to be fired whenever a new transaction is
-// received into the mempool
+// RegisterMempoolCallback registers a callback to be fired whenever a
+// new transaction is received into the mempool
 func (s *ChainService) RegisterMempoolCallback(onRecvTx func(*ltcutil.Tx)) {
 	s.mempool.RegisterCallback(onRecvTx)
 }
 
-// NotifyMempoolReceived registers addresses to receive a callback on when a transaction
-// paying to them enters the mempool.
+// NotifyMempoolReceived registers addresses to receive a callback on
+// when a transaction paying to them enters the mempool.
 func (s *ChainService) NotifyMempoolReceived(addrs []ltcutil.Address) {
 	s.mempool.NotifyReceived(addrs)
 }
 
-// RegisterMwebUtxosCallback registers a callback to be fired whenever new mweb utxos
-// are received
+// RegisterMwebUtxosCallback registers a callback to be fired whenever
+// new mweb utxos are received
 func (s *ChainService) RegisterMwebUtxosCallback(
-	onMwebUtxos func([]byte, []*wire.MwebNetUtxo)) {
+	onMwebUtxos func(*mweb.Leafset, []*wire.MwebNetUtxo)) {
 
 	s.blockManager.RegisterMwebUtxosCallback(onMwebUtxos)
 }
 
-// Notify of any added mweb utxos since the last snapshot indicated by the leafset.
-func (s *ChainService) NotifyAddedMwebUtxos(leafset []byte) error {
+// Notify of any added mweb utxos since the last snapshot indicated by
+// the leafset.
+func (s *ChainService) NotifyAddedMwebUtxos(leafset *mweb.Leafset) error {
 	return s.blockManager.notifyAddedMwebUtxos(leafset)
 }
 
-// MwebUtxoExists checks if a mweb utxo with the given output ID exists in the db.
+// MwebUtxoExists checks if a mweb utxo with the given output ID exists
+// in the db.
 func (s *ChainService) MwebUtxoExists(outputId *chainhash.Hash) bool {
 	if _, err := s.MwebCoinDB.FetchCoin(outputId); err != nil {
-		if err == mweb.ErrCoinNotFound {
+		if err == mwebdb.ErrCoinNotFound {
 			return false
 		}
 		panic(err)
