@@ -523,6 +523,12 @@ func (b *blockManager) mwebHandler() {
 			}
 		}
 
+		err = b.cfg.MwebCoins.RollbackLeavesAtHeight(rollbackHeight)
+		if err != nil {
+			log.Critical(err)
+			return
+		}
+
 		lastHash := lastHeader.BlockHash()
 
 		log.Infof("Starting mweb sync at (block_height=%v, block_hash=%v)",

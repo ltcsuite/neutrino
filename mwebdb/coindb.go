@@ -63,6 +63,9 @@ type CoinDatabase interface {
 	// Set the block height to number of leaves mapping.
 	PutLeavesAtHeight(map[uint32]uint64) error
 
+	// Rollback the block height to number of leaves mapping.
+	RollbackLeavesAtHeight(uint32) error
+
 	// Get the leafset marking the unspent indices.
 	GetLeafset() (*mweb.Leafset, error)
 
@@ -216,6 +219,26 @@ func (c *CoinStore) PutLeavesAtHeight(m map[uint32]uint64) error {
 			}
 		}
 		return nil
+	})
+}
+
+// Rollback the block height to number of leaves mapping.
+//
+// NOTE: This method is a part of the CoinDatabase interface.
+func (c *CoinStore) RollbackLeavesAtHeight(height uint32) error {
+	if height == 0 {
+		return nil
+	}
+	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
+		rootBucket := tx.ReadWriteBucket(rootBucket)
+		heightBucket := rootBucket.NestedReadWriteBucket(heightBucket)
+
+		return heightBucket.ForEach(func(k, v []byte) error {
+			if binary.LittleEndian.Uint32(k) > height {
+				return heightBucket.Delete(k)
+			}
+			return nil
+		})
 	})
 }
 
