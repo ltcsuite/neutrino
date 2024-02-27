@@ -27,6 +27,9 @@ var (
 	// leafBucket is the bucket that stores the mapping between
 	// leaf indices and output IDs.
 	leafBucket = []byte("leaves")
+
+	// rollbackHeight is the key that stores the rollback height.
+	rollbackHeight = []byte("rollbackHeight")
 )
 
 var (
@@ -50,6 +53,9 @@ type CoinDatabase interface {
 
 	// Set rollback height.
 	PutRollbackHeight(uint32) error
+
+	// Clear rollback height.
+	ClearRollbackHeight(uint32) error
 
 	// Get the block height to number of leaves mapping.
 	GetLeavesAtHeight() (map[uint32]uint64, error)
@@ -129,7 +135,7 @@ func (c *CoinStore) GetRollbackHeight() (height uint32, err error) {
 	err = walletdb.View(c.db, func(tx walletdb.ReadTx) error {
 		rootBucket := tx.ReadBucket(rootBucket)
 
-		b := rootBucket.Get([]byte("rollbackHeight"))
+		b := rootBucket.Get(rollbackHeight)
 		if b != nil {
 			if len(b) != 4 {
 				return ErrUnexpectedValueLen
@@ -148,12 +154,29 @@ func (c *CoinStore) PutRollbackHeight(height uint32) error {
 	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
 		rootBucket := tx.ReadWriteBucket(rootBucket)
 
-		k := []byte("rollbackHeight")
-		if height == 0 {
-			return rootBucket.Delete(k)
-		}
 		b := binary.LittleEndian.AppendUint32(nil, height)
-		return rootBucket.Put(k, b)
+		return rootBucket.Put(rollbackHeight, b)
+	})
+}
+
+// Clear rollback height.
+//
+// NOTE: This method is a part of the CoinDatabase interface.
+func (c *CoinStore) ClearRollbackHeight(height uint32) error {
+	return walletdb.Update(c.db, func(tx walletdb.ReadWriteTx) error {
+		rootBucket := tx.ReadWriteBucket(rootBucket)
+
+		b := rootBucket.Get(rollbackHeight)
+		if b == nil {
+			return nil
+		}
+		if len(b) != 4 {
+			return ErrUnexpectedValueLen
+		}
+		if binary.LittleEndian.Uint32(b) != height {
+			return nil
+		}
+		return rootBucket.Delete(rollbackHeight)
 	})
 }
 

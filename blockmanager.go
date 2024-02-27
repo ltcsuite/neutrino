@@ -618,7 +618,7 @@ func (b *blockManager) mwebHandler() {
 			continue
 		}
 
-		err = b.cfg.MwebCoins.PutRollbackHeight(0)
+		err = b.cfg.MwebCoins.ClearRollbackHeight(rollbackHeight)
 		if err != nil {
 			log.Critical(err)
 			return
