@@ -601,6 +601,7 @@ func (b *blockManager) mwebHandler() {
 			Bits:   mwebLeafset.Leafset,
 			Size:   mwebHeader.MwebHeader.OutputMMRSize,
 			Height: lastHeight,
+			Block:  lastHeader,
 		}
 
 		// Store the leaf count at this height.
