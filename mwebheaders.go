@@ -51,7 +51,10 @@ func (b *blockManager) getMwebHeaders(lastHeight uint32) error {
 	if err := fetch(height, 100); err != nil {
 		return err
 	}
-	if err := fetch(lastHeight-4000, 1); err != nil {
+	if height < lastHeight-4000 && lastHeight > 4000 {
+		height = lastHeight - 4000
+	}
+	if err := fetch(height, 1); err != nil {
 		return err
 	}
 
