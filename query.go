@@ -888,9 +888,13 @@ func (s *ChainService) GetBlock(blockHash chainhash.Hash,
 			return noProgress
 		}
 
+		isSegwitActive := true
+		if s.chainParams.Net == wire.MainNet {
+			isSegwitActive = block.Height() >= 1201536
+		}
 		if err := blockchain.ValidateWitnessCommitment(
 			block,
-		); err != nil {
+		); err != nil && isSegwitActive {
 			log.Warnf("Invalid block for %s received from %s: %v "+
 				"-- disconnecting peer", blockHash, peer, err)
 
