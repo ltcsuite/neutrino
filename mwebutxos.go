@@ -301,6 +301,23 @@ func (b *blockManager) notifyAddedMwebUtxos(oldLeafset *mweb.Leafset) error {
 	b.mwebUtxosCallbacksMtx.Lock()
 	defer b.mwebUtxosCallbacksMtx.Unlock()
 
+	for {
+		rollbackHeight, err := b.cfg.MwebCoins.GetRollbackHeight()
+		if err != nil {
+			return err
+		} else if rollbackHeight == 0 {
+			break
+		}
+
+		b.mwebRollbackSignal.Wait()
+
+		select {
+		case <-b.quit:
+			return ErrShuttingDown
+		default:
+		}
+	}
+
 	newLeafset, err := b.cfg.MwebCoins.GetLeafset()
 	if err != nil {
 		return err

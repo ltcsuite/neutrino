@@ -161,6 +161,7 @@ func (b *blockManager) mwebHandler() {
 			log.Critical(err)
 			return
 		}
+		b.mwebRollbackSignal.Broadcast()
 
 		// Now we check the headers again. If the block headers are not yet
 		// current, then we go back to the loop waiting for them to finish.

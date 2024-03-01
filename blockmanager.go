@@ -225,6 +225,7 @@ type blockManager struct { // nolint:maligned
 
 	mwebUtxosCallbacksMtx sync.Mutex
 	mwebUtxosCallbacks    []func(*mweb.Leafset, []*wire.MwebNetUtxo)
+	mwebRollbackSignal    *sync.Cond
 }
 
 // newBlockManager returns a new bitcoin block manager.  Use Start to begin
@@ -262,6 +263,7 @@ func newBlockManager(cfg *blockManagerCfg) (*blockManager, error) {
 	// duties.
 	bm.newHeadersSignal = sync.NewCond(&bm.newHeadersMtx)
 	bm.newFilterHeadersSignal = sync.NewCond(&bm.newFilterHeadersMtx)
+	bm.mwebRollbackSignal = sync.NewCond(&bm.mwebUtxosCallbacksMtx)
 
 	// We fetch the genesis header to use for verifying the first received
 	// interval.
@@ -357,6 +359,7 @@ func (b *blockManager) Stop() error {
 
 			b.newHeadersSignal.Broadcast()
 			b.newFilterHeadersSignal.Broadcast()
+			b.mwebRollbackSignal.Broadcast()
 		}
 	}()
 
