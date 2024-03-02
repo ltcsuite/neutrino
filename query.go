@@ -983,13 +983,13 @@ func (s *ChainService) sendTransaction(tx *wire.MsgTx, options ...QueryOption) e
 	// We'll gather all the peers who replied to our query, along with
 	// the ones who rejected it and their reason for rejecting it. We'll use
 	// this to determine whether our transaction was actually rejected.
-	replies := make(map[int32]struct{})
-	rejections := make(map[int32]*pushtx.BroadcastError)
+	replies := make(map[string]struct{})
+	rejections := make(map[string]*pushtx.BroadcastError)
 	rejectCodes := make(map[pushtx.BroadcastErrorCode]int)
 
 	// closers is a map that tracks the delayed closers we need to make sure
 	// the peer quit channel is closed after a timeout.
-	closers := make(map[int32]*delayedCloser)
+	closers := make(map[string]*delayedCloser)
 
 	// Send the peer query and listen for getdata.
 	s.queryAllPeers(
@@ -999,12 +999,12 @@ func (s *ChainService) sendTransaction(tx *wire.MsgTx, options ...QueryOption) e
 
 			// The "closer" can be used to either close the peer
 			// quit channel after a certain timeout or immediately.
-			closer, ok := closers[sp.ID()]
+			closer, ok := closers[sp.Addr()]
 			if !ok {
 				closer = newDelayedCloser(
 					peerQuit, qo.rejectTimeout,
 				)
-				closers[sp.ID()] = closer
+				closers[sp.Addr()] = closer
 			}
 
 			switch response := resp.(type) {
@@ -1021,7 +1021,7 @@ func (s *ChainService) sendTransaction(tx *wire.MsgTx, options ...QueryOption) e
 						// request multiple times, we
 						// need to de-duplicate them
 						// using a map.
-						replies[sp.ID()] = struct{}{}
+						replies[sp.Addr()] = struct{}{}
 
 						// Okay, so the peer responded
 						// with an INV message, and we
@@ -1052,7 +1052,7 @@ func (s *ChainService) sendTransaction(tx *wire.MsgTx, options ...QueryOption) e
 				broadcastErr := pushtx.ParseBroadcastError(
 					response, sp.Addr(),
 				)
-				rejections[sp.ID()] = broadcastErr
+				rejections[sp.Addr()] = broadcastErr
 				rejectCodes[broadcastErr.Code]++
 
 				log.Debugf("Transaction %v rejected by peer "+
