@@ -41,12 +41,19 @@ func (m *mockPeer) SubscribeRecvMsg() (<-chan wire.Message, func()) {
 	return msgChan, func() {}
 }
 
+func (m *mockPeer) Disconnect() {
+}
+
 func (m *mockPeer) OnDisconnect() <-chan struct{} {
 	return m.quit
 }
 
 func (m *mockPeer) Addr() string {
 	return m.addr
+}
+
+func (m *mockPeer) ID() int32 {
+	return 0
 }
 
 // makeJob returns a new query job that will be done when it is given the
