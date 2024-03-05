@@ -74,6 +74,7 @@ type PeerRanking interface {
 // TODO(halseth): support more than one active job at a time.
 type activeWorker struct {
 	w         Worker
+	peerId    int32
 	activeJob *queryJob
 	onExit    chan struct{}
 }
@@ -275,6 +276,7 @@ Loop:
 			onExit := make(chan struct{})
 			workers[peer.Addr()] = &activeWorker{
 				w:         r,
+				peerId:    peer.ID(),
 				activeJob: nil,
 				onExit:    onExit,
 			}
@@ -298,7 +300,11 @@ Loop:
 			// Delete the job from the worker's active job, such
 			// that the slot gets opened for more work.
 			r := workers[result.peer.Addr()]
-			r.activeJob = nil
+			if r != nil && r.peerId == result.peer.ID() {
+				r.activeJob = nil
+			} else {
+				result.peer.Disconnect()
+			}
 
 			// Get the index of this query's batch, and delete it
 			// from the map of current queries, since we don't have
@@ -334,6 +340,10 @@ Loop:
 			case result.err != nil:
 				// Punish the peer for the failed query.
 				w.cfg.Ranking.Punish(result.peer.Addr())
+
+				if batch == nil {
+					break
+				}
 
 				if batch != nil && !batch.noRetryMax {
 					result.job.tries++

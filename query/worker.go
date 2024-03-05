@@ -193,6 +193,7 @@ func (w *worker) Run(results chan<- *jobResult, quit <-chan struct{}) {
 					"with job index %v", peer.Addr(),
 					job.Req, job.Index())
 
+				peer.Disconnect()
 				break Loop
 
 			// If the peer disconnects before giving us a valid

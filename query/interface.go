@@ -181,6 +181,12 @@ type Peer interface {
 	// Addr returns the address of this peer.
 	Addr() string
 
+	// ID returns the id of this peer.
+	ID() int32
+
+	// Disconnect disconnects the peer.
+	Disconnect()
+
 	// OnDisconnect returns a channel that will be closed when this peer is
 	// disconnected.
 	OnDisconnect() <-chan struct{}
