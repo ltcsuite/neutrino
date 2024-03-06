@@ -178,7 +178,6 @@ func (w *peerWorkManager) workDispatcher() {
 	type batchProgress struct {
 		noRetryMax bool
 		maxRetries uint8
-		timeout    <-chan time.Time
 		rem        int
 		errChan    chan error
 	}
@@ -196,6 +195,9 @@ func (w *peerWorkManager) workDispatcher() {
 			b.errChan <- ErrWorkManagerShuttingDown
 		}
 	}()
+
+	// Batch timeouts are notified on this channel.
+	batchTimeout := make(chan uint64)
 
 	// We set up a counter that we'll increase with each incoming query,
 	// and will serve as the priority of each. In addition we map each
@@ -417,23 +419,15 @@ Loop:
 				}
 			}
 
+		case batchNum := <-batchTimeout:
 			// If the total timeout for this batch has passed,
 			// return an error.
+			batch := currentBatches[batchNum]
 			if batch != nil {
-				select {
-				case <-batch.timeout:
-					batch.errChan <- ErrQueryTimeout
-					delete(currentBatches, batchNum)
+				batch.errChan <- ErrQueryTimeout
+				delete(currentBatches, batchNum)
 
-					log.Warnf("Query(%d) failed with "+
-						"error: %v. Timing out.",
-						result.job.index, result.err)
-
-					log.Debugf("Batch %v timed out",
-						batchNum)
-
-				default:
-				}
+				log.Warnf("Batch %v timed out", batchNum)
 			}
 
 		// A new batch of queries where scheduled.
@@ -459,10 +453,22 @@ Loop:
 			currentBatches[batchIndex] = &batchProgress{
 				noRetryMax: batch.options.noRetryMax,
 				maxRetries: batch.options.numRetries,
-				timeout:    time.After(batch.options.timeout),
 				rem:        len(batch.requests),
 				errChan:    batch.errChan,
 			}
+
+			go func(batchNum uint64) {
+				select {
+				case <-time.After(batch.options.timeout):
+				case <-w.quit:
+					return
+				}
+				select {
+				case batchTimeout <- batchNum:
+				case <-w.quit:
+				}
+			}(batchIndex)
+
 			batchIndex++
 
 		case <-w.quit:
