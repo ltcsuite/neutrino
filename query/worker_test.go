@@ -52,10 +52,6 @@ func (m *mockPeer) Addr() string {
 	return m.addr
 }
 
-func (m *mockPeer) ID() int32 {
-	return 0
-}
-
 // makeJob returns a new query job that will be done when it is given the
 // finalResp message. Similarly ot will progress on being given the
 // progressResp message, while any other message will be ignored.
