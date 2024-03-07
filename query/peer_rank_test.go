@@ -11,10 +11,10 @@ func TestPeerRank(t *testing.T) {
 	const numPeers = 8
 
 	ranking := NewPeerRanking()
-	var peers []string
+	var peers []Peer
 	for i := 0; i < numPeers; i++ {
 		p := fmt.Sprintf("peer%d", i)
-		peers = append(peers, p)
+		peers = append(peers, &mockPeer{addr: p})
 		ranking.AddPeer(p)
 	}
 
@@ -26,7 +26,7 @@ func TestPeerRank(t *testing.T) {
 	// should be unchanged.
 	for i := 0; i < numPeers/2; i++ {
 		p := fmt.Sprintf("peer%d", i)
-		if peers[i] != p {
+		if peers[i].Addr() != p {
 			t.Fatalf("expected %v, got %v", p, peers[i])
 		}
 	}
@@ -34,14 +34,14 @@ func TestPeerRank(t *testing.T) {
 	// Punish the first ones more, which should flip the order.
 	for i := 0; i < numPeers/2; i++ {
 		for j := 0; j <= i; j++ {
-			ranking.Punish(peers[j])
+			ranking.Punish(peers[j].Addr())
 		}
 	}
 
 	ranking.Order(peers)
 	for i := 0; i < numPeers/2; i++ {
 		p := fmt.Sprintf("peer%d", numPeers/2-i-1)
-		if peers[i] != p {
+		if peers[i].Addr() != p {
 			t.Fatalf("expected %v, got %v", p, peers[i])
 		}
 	}
@@ -53,7 +53,7 @@ func TestPeerRank(t *testing.T) {
 	}
 
 	ranking.Order(peers)
-	if peers[0] != "peer0" {
+	if peers[0].Addr() != "peer0" {
 		t.Fatalf("peer0 was not first")
 	}
 }

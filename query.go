@@ -315,11 +315,11 @@ func (s *ChainService) queryAllPeers(
 
 	// Now we start a goroutine for each peer which manages the peer's
 	// message subscription.
-	peerQuits := make(map[string]chan struct{})
+	peerQuits := make(map[int32]chan struct{})
 	for _, sp := range peers {
 		sp.subscribeRecvMsg(subscription)
 		wg.Add(1)
-		peerQuits[sp.Addr()] = make(chan struct{})
+		peerQuits[sp.ID()] = make(chan struct{})
 		go func(sp *ServerPeer, peerQuit <-chan struct{}) {
 			defer wg.Done()
 
@@ -339,7 +339,7 @@ func (s *ChainService) queryAllPeers(
 				case <-timeout:
 				}
 			}
-		}(sp, peerQuits[sp.Addr()])
+		}(sp, peerQuits[sp.ID()])
 	}
 
 	// This goroutine will wait until all of the peer-query goroutines have
@@ -383,10 +383,10 @@ checkResponses:
 			// stuck. This is a caveat for callers that should be
 			// fixed before exposing this function for public use.
 			select {
-			case <-peerQuits[sm.sp.Addr()]:
+			case <-peerQuits[sm.sp.ID()]:
 			default:
 				checkResponse(sm.sp, sm.msg, queryQuit,
-					peerQuits[sm.sp.Addr()])
+					peerQuits[sm.sp.ID()])
 			}
 		}
 	}
@@ -983,13 +983,13 @@ func (s *ChainService) sendTransaction(tx *wire.MsgTx, options ...QueryOption) e
 	// We'll gather all the peers who replied to our query, along with
 	// the ones who rejected it and their reason for rejecting it. We'll use
 	// this to determine whether our transaction was actually rejected.
-	replies := make(map[string]struct{})
-	rejections := make(map[string]*pushtx.BroadcastError)
+	replies := make(map[int32]struct{})
+	rejections := make(map[int32]*pushtx.BroadcastError)
 	rejectCodes := make(map[pushtx.BroadcastErrorCode]int)
 
 	// closers is a map that tracks the delayed closers we need to make sure
 	// the peer quit channel is closed after a timeout.
-	closers := make(map[string]*delayedCloser)
+	closers := make(map[int32]*delayedCloser)
 
 	// Send the peer query and listen for getdata.
 	s.queryAllPeers(
@@ -999,12 +999,12 @@ func (s *ChainService) sendTransaction(tx *wire.MsgTx, options ...QueryOption) e
 
 			// The "closer" can be used to either close the peer
 			// quit channel after a certain timeout or immediately.
-			closer, ok := closers[sp.Addr()]
+			closer, ok := closers[sp.ID()]
 			if !ok {
 				closer = newDelayedCloser(
 					peerQuit, qo.rejectTimeout,
 				)
-				closers[sp.Addr()] = closer
+				closers[sp.ID()] = closer
 			}
 
 			switch response := resp.(type) {
@@ -1021,7 +1021,7 @@ func (s *ChainService) sendTransaction(tx *wire.MsgTx, options ...QueryOption) e
 						// request multiple times, we
 						// need to de-duplicate them
 						// using a map.
-						replies[sp.Addr()] = struct{}{}
+						replies[sp.ID()] = struct{}{}
 
 						// Okay, so the peer responded
 						// with an INV message, and we
@@ -1052,7 +1052,7 @@ func (s *ChainService) sendTransaction(tx *wire.MsgTx, options ...QueryOption) e
 				broadcastErr := pushtx.ParseBroadcastError(
 					response, sp.Addr(),
 				)
-				rejections[sp.Addr()] = broadcastErr
+				rejections[sp.ID()] = broadcastErr
 				rejectCodes[broadcastErr.Code]++
 
 				log.Debugf("Transaction %v rejected by peer "+

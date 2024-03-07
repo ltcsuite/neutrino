@@ -66,7 +66,7 @@ type PeerRanking interface {
 	Punish(peer string)
 
 	// Order sorst the slice of peers according to their ranking.
-	Order(peers []string)
+	Order(peers []Peer)
 }
 
 // activeWorker wraps a Worker that is currently running, together with the job
@@ -74,7 +74,6 @@ type PeerRanking interface {
 // TODO(halseth): support more than one active job at a time.
 type activeWorker struct {
 	w         Worker
-	peerId    int32
 	activeJob *queryJob
 	onExit    chan struct{}
 }
@@ -205,7 +204,7 @@ func (w *peerWorkManager) workDispatcher() {
 	queryIndex := uint64(0)
 	currentQueries := make(map[uint64]uint64)
 
-	workers := make(map[string]*activeWorker)
+	workers := make(map[Peer]*activeWorker)
 
 Loop:
 	for {
@@ -215,7 +214,7 @@ Loop:
 			next := work.Peek().(*queryJob)
 
 			// Find the peers with free work slots available.
-			var freeWorkers []string
+			var freeWorkers []Peer
 			for p, r := range workers {
 				// Only one active job at a time is currently
 				// supported.
@@ -276,9 +275,8 @@ Loop:
 			// worker's Run method returns, to know when we can
 			// remove it from our set of active workers.
 			onExit := make(chan struct{})
-			workers[peer.Addr()] = &activeWorker{
+			workers[peer] = &activeWorker{
 				w:         r,
-				peerId:    peer.ID(),
 				activeJob: nil,
 				onExit:    onExit,
 			}
@@ -301,12 +299,8 @@ Loop:
 
 			// Delete the job from the worker's active job, such
 			// that the slot gets opened for more work.
-			r := workers[result.peer.Addr()]
-			if r != nil && r.peerId == result.peer.ID() {
-				r.activeJob = nil
-			} else {
-				result.peer.Disconnect()
-			}
+			r := workers[result.peer]
+			r.activeJob = nil
 
 			// Get the index of this query's batch, and delete it
 			// from the map of current queries, since we don't have
