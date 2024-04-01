@@ -41,9 +41,6 @@ func (m *mockPeer) SubscribeRecvMsg() (<-chan wire.Message, func()) {
 	return msgChan, func() {}
 }
 
-func (m *mockPeer) Disconnect() {
-}
-
 func (m *mockPeer) OnDisconnect() <-chan struct{} {
 	return m.quit
 }

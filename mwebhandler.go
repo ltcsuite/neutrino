@@ -1,6 +1,8 @@
 package neutrino
 
 import (
+	"time"
+
 	"github.com/ltcsuite/ltcd/ltcutil/mweb"
 	"github.com/ltcsuite/ltcd/wire"
 )
@@ -128,6 +130,7 @@ func (b *blockManager) mwebHandler() {
 			return
 		default:
 			if !verified {
+				time.Sleep(time.Second)
 				continue
 			}
 		}

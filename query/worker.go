@@ -26,6 +26,7 @@ var (
 type queryJob struct {
 	tries      uint8
 	index      uint64
+	batch      uint64
 	timeout    time.Duration
 	encoding   wire.MessageEncoding
 	cancelChan <-chan struct{}
@@ -193,7 +194,6 @@ func (w *worker) Run(results chan<- *jobResult, quit <-chan struct{}) {
 					"with job index %v", peer.Addr(),
 					job.Req, job.Index())
 
-				peer.Disconnect()
 				break Loop
 
 			// If the peer disconnects before giving us a valid

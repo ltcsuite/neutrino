@@ -688,6 +688,11 @@ rescanLoop:
 		// until we reach the tip of the chain as we know it. At this
 		// point, we'll be "current" again.
 		case false:
+			select {
+			case <-ro.quit:
+				return ErrRescanExit
+			default:
+			}
 
 			// Apply all queued filter updates.
 		updateFilterLoop:

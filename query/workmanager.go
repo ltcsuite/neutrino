@@ -177,7 +177,7 @@ func (w *peerWorkManager) workDispatcher() {
 	type batchProgress struct {
 		noRetryMax bool
 		maxRetries uint8
-		rem        int
+		jobs       []*queryJob
 		errChan    chan error
 	}
 
@@ -199,10 +199,8 @@ func (w *peerWorkManager) workDispatcher() {
 	batchTimeout := make(chan uint64)
 
 	// We set up a counter that we'll increase with each incoming query,
-	// and will serve as the priority of each. In addition we map each
-	// query to the batch they are part of.
+	// and will serve as the priority of each.
 	queryIndex := uint64(0)
-	currentQueries := make(map[uint64]uint64)
 
 	workers := make(map[Peer]*activeWorker)
 
@@ -302,12 +300,8 @@ Loop:
 			r := workers[result.peer]
 			r.activeJob = nil
 
-			// Get the index of this query's batch, and delete it
-			// from the map of current queries, since we don't have
-			// to track it anymore. We'll add it back if the result
-			// turns out to be an error.
-			batchNum := currentQueries[result.job.index]
-			delete(currentQueries, result.job.index)
+			// Get the index of this query's batch.
+			batchNum := result.job.batch
 			batch := currentBatches[batchNum]
 
 			switch {
@@ -341,14 +335,14 @@ Loop:
 					break
 				}
 
-				if batch != nil && !batch.noRetryMax {
+				if !batch.noRetryMax {
 					result.job.tries++
 				}
 
 				// Check if this query has reached its maximum
 				// number of retries. If so, remove it from the
 				// batch and don't reschedule it.
-				if batch != nil && !batch.noRetryMax &&
+				if !batch.noRetryMax &&
 					result.job.tries >= batch.maxRetries {
 
 					log.Warnf("Query(%d) from peer %v "+
@@ -384,7 +378,6 @@ Loop:
 				}
 
 				heap.Push(work, result.job)
-				currentQueries[result.job.index] = batchNum
 
 			// Otherwise, we got a successful result and update the
 			// status of the batch this query is a part of.
@@ -395,14 +388,21 @@ Loop:
 				// Decrement the number of queries remaining in
 				// the batch.
 				if batch != nil {
-					batch.rem--
+					var jobs []*queryJob
+					for _, job := range batch.jobs {
+						if job != result.job {
+							job.tries = 0
+							jobs = append(jobs, job)
+						}
+					}
+					batch.jobs = jobs
 					log.Tracef("Remaining jobs for batch "+
-						"%v: %v ", batchNum, batch.rem)
+						"%v: %v ", batchNum, len(jobs))
 
 					// If this was the last query in flight
 					// for this batch, we can notify that
 					// it finished, and delete it.
-					if batch.rem == 0 {
+					if len(jobs) == 0 {
 						batch.errChan <- nil
 						delete(currentBatches, batchNum)
 
@@ -432,22 +432,25 @@ Loop:
 			log.Debugf("Adding new batch(%d) of %d queries to "+
 				"work queue", batchIndex, len(batch.requests))
 
+			var jobs []*queryJob
 			for _, q := range batch.requests {
-				heap.Push(work, &queryJob{
+				job := &queryJob{
 					index:      queryIndex,
+					batch:      batchIndex,
 					timeout:    minQueryTimeout,
 					encoding:   batch.options.encoding,
 					cancelChan: batch.options.cancelChan,
 					Request:    q,
-				})
-				currentQueries[queryIndex] = batchIndex
+				}
+				heap.Push(work, job)
+				jobs = append(jobs, job)
 				queryIndex++
 			}
 
 			currentBatches[batchIndex] = &batchProgress{
 				noRetryMax: batch.options.noRetryMax,
 				maxRetries: batch.options.numRetries,
-				rem:        len(batch.requests),
+				jobs:       jobs,
 				errChan:    batch.errChan,
 			}
 
