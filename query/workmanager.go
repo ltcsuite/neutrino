@@ -342,7 +342,7 @@ Loop:
 				// Check if this query has reached its maximum
 				// number of retries. If so, remove it from the
 				// batch and don't reschedule it.
-				if !batch.noRetryMax &&
+				if !batch.noRetryMax && !result.job.reset &&
 					result.job.tries >= batch.maxRetries {
 
 					log.Warnf("Query(%d) from peer %v "+
@@ -377,6 +377,12 @@ Loop:
 					result.job.timeout = newTimeout
 				}
 
+				if result.job.reset {
+					result.job.tries = 0
+					result.job.reset = false
+					result.job.timeout = minQueryTimeout
+				}
+
 				heap.Push(work, result.job)
 
 			// Otherwise, we got a successful result and update the
@@ -391,7 +397,7 @@ Loop:
 					var jobs []*queryJob
 					for _, job := range batch.jobs {
 						if job != result.job {
-							job.tries = 0
+							job.reset = true
 							jobs = append(jobs, job)
 						}
 					}
