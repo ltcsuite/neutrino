@@ -46,19 +46,21 @@ func (mp *Mempool) HaveTransaction(hash *chainhash.Hash) bool {
 // maybe calls back if it matches any watched addresses.
 func (mp *Mempool) AddTransaction(tx *ltcutil.Tx) {
 	mp.mtx.Lock()
-	defer mp.mtx.Unlock()
 	mp.downloadedTxs[*tx.Hash()] = true
 
 	ro := defaultRescanOptions()
 	WatchAddrs(mp.watchedAddrs...)(ro)
+	callbacks := mp.callbacks
+	mp.mtx.Unlock()
+
 	if ok, err := ro.paysWatchedAddr(tx); ok && err == nil {
-		for _, cb := range mp.callbacks {
+		for _, cb := range callbacks {
 			cb(tx)
 		}
 	}
 
-	if tx.MsgTx().Mweb != nil {
-		mp.blockManager.notifyMwebUtxos(tx.MsgTx().Mweb.TxBody.Outputs)
+	if mw := tx.MsgTx().Mweb; mw != nil {
+		mp.blockManager.notifyMwebUtxos(mw.TxBody.Outputs)
 	}
 }
 
