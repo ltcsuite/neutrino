@@ -380,7 +380,7 @@ func (c *CoinStore) FetchLeaves(leaves []uint64) ([]*wire.MwebNetUtxo, error) {
 			leafIndex := binary.LittleEndian.AppendUint64(nil, leaf)
 			outputId := bytes.Clone(leafBucket.Get(leafIndex))
 			if outputId == nil {
-				return ErrLeafNotFound
+				continue
 			}
 
 			coinBytes := coinBucket.Get(outputId)
