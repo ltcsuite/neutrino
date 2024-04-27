@@ -1076,9 +1076,8 @@ func (s *ChainService) sendTransaction(tx *wire.MsgTx, options ...QueryOption) e
 	// error as the reliable broadcaster will take care of broadcasting this
 	// transaction upon every block connected/disconnected.
 	if len(replies) == 0 {
-		log.Debugf("No peers replied to inv message for transaction %v",
+		return fmt.Errorf("no peers replied to inv message for transaction %v",
 			txHash)
-		return nil
 	}
 
 	// firstRejectWithCode returns the first reject error that we have for
