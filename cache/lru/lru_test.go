@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ltcsuite/neutrino/cache"
+	"github.com/ltcmweb/neutrino/cache"
 	"github.com/stretchr/testify/require"
 )
 

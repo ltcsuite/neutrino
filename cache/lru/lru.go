@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ltcsuite/neutrino/cache"
+	"github.com/ltcmweb/neutrino/cache"
 )
 
 // entry represents a (key,value) pair entry in the Cache. The Cache's list

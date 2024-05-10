@@ -10,17 +10,17 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ltcsuite/ltcd/btcjson"
-	"github.com/ltcsuite/ltcd/chaincfg"
-	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
-	"github.com/ltcsuite/ltcd/ltcutil"
-	"github.com/ltcsuite/ltcd/ltcutil/gcs"
-	"github.com/ltcsuite/ltcd/ltcutil/gcs/builder"
-	"github.com/ltcsuite/ltcd/rpcclient"
-	"github.com/ltcsuite/ltcd/txscript"
-	"github.com/ltcsuite/ltcd/wire"
-	"github.com/ltcsuite/neutrino/blockntfns"
-	"github.com/ltcsuite/neutrino/headerfs"
+	"github.com/ltcmweb/ltcd/btcjson"
+	"github.com/ltcmweb/ltcd/chaincfg"
+	"github.com/ltcmweb/ltcd/chaincfg/chainhash"
+	"github.com/ltcmweb/ltcd/ltcutil"
+	"github.com/ltcmweb/ltcd/ltcutil/gcs"
+	"github.com/ltcmweb/ltcd/ltcutil/gcs/builder"
+	"github.com/ltcmweb/ltcd/rpcclient"
+	"github.com/ltcmweb/ltcd/txscript"
+	"github.com/ltcmweb/ltcd/wire"
+	"github.com/ltcmweb/neutrino/blockntfns"
+	"github.com/ltcmweb/neutrino/headerfs"
 )
 
 var (

@@ -3,10 +3,10 @@ package neutrino
 import (
 	"fmt"
 
-	"github.com/ltcsuite/ltcd/ltcutil"
-	"github.com/ltcsuite/ltcd/ltcutil/gcs"
-	"github.com/ltcsuite/ltcd/ltcutil/gcs/builder"
-	"github.com/ltcsuite/ltcd/txscript"
+	"github.com/ltcmweb/ltcd/ltcutil"
+	"github.com/ltcmweb/ltcd/ltcutil/gcs"
+	"github.com/ltcmweb/ltcd/ltcutil/gcs/builder"
+	"github.com/ltcmweb/ltcd/txscript"
 )
 
 // VerifyBasicBlockFilter asserts that a given block filter was constructed

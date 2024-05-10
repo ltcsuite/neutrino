@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/ltcsuite/ltcd/wire"
+	"github.com/ltcmweb/ltcd/wire"
 )
 
 var (

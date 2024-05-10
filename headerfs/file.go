@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
-	"github.com/ltcsuite/ltcd/wire"
+	"github.com/ltcmweb/ltcd/chaincfg/chainhash"
+	"github.com/ltcmweb/ltcd/wire"
 )
 
 // ErrHeaderNotFound is returned when a target header on disk (flat file) can't

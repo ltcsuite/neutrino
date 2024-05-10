@@ -3,7 +3,7 @@ package chanutils
 import (
 	"sync"
 
-	"github.com/ltcsuite/neutrino/cache/lru"
+	"github.com/ltcmweb/neutrino/cache/lru"
 )
 
 const (

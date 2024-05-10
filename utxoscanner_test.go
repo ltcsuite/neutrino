@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
-	"github.com/ltcsuite/ltcd/ltcutil"
-	"github.com/ltcsuite/ltcd/ltcutil/gcs"
-	"github.com/ltcsuite/ltcd/wire"
-	"github.com/ltcsuite/neutrino/headerfs"
+	"github.com/ltcmweb/ltcd/chaincfg/chainhash"
+	"github.com/ltcmweb/ltcd/ltcutil"
+	"github.com/ltcmweb/ltcd/ltcutil/gcs"
+	"github.com/ltcmweb/ltcd/wire"
+	"github.com/ltcmweb/neutrino/headerfs"
 )
 
 type MockChainClient struct {

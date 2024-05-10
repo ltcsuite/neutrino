@@ -3,10 +3,10 @@ package filterdb
 import (
 	"fmt"
 
-	"github.com/ltcsuite/ltcd/chaincfg"
-	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
-	"github.com/ltcsuite/ltcd/ltcutil/gcs"
-	"github.com/ltcsuite/ltcd/ltcutil/gcs/builder"
+	"github.com/ltcmweb/ltcd/chaincfg"
+	"github.com/ltcmweb/ltcd/chaincfg/chainhash"
+	"github.com/ltcmweb/ltcd/ltcutil/gcs"
+	"github.com/ltcmweb/ltcd/ltcutil/gcs/builder"
 	"github.com/ltcsuite/ltcwallet/walletdb"
 )
 

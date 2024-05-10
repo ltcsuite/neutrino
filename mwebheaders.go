@@ -3,10 +3,10 @@ package neutrino
 import (
 	"slices"
 
-	"github.com/ltcsuite/ltcd/ltcutil/mweb"
-	"github.com/ltcsuite/ltcd/wire"
-	"github.com/ltcsuite/neutrino/banman"
-	"github.com/ltcsuite/neutrino/query"
+	"github.com/ltcmweb/ltcd/ltcutil/mweb"
+	"github.com/ltcmweb/ltcd/wire"
+	"github.com/ltcmweb/neutrino/banman"
+	"github.com/ltcmweb/neutrino/query"
 )
 
 // mwebHeadersQuery holds all information necessary to perform and

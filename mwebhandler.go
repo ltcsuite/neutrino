@@ -3,8 +3,8 @@ package neutrino
 import (
 	"time"
 
-	"github.com/ltcsuite/ltcd/ltcutil/mweb"
-	"github.com/ltcsuite/ltcd/wire"
+	"github.com/ltcmweb/ltcd/ltcutil/mweb"
+	"github.com/ltcmweb/ltcd/wire"
 )
 
 // mwebHandler is the mweb download handler for the block manager. It must be

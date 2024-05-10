@@ -3,8 +3,8 @@ package neutrino
 import (
 	"sync"
 
-	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
-	"github.com/ltcsuite/ltcd/ltcutil"
+	"github.com/ltcmweb/ltcd/chaincfg/chainhash"
+	"github.com/ltcmweb/ltcd/ltcutil"
 )
 
 // Mempool is used when we are downloading unconfirmed transactions.

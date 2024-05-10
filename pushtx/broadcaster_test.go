@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ltcsuite/ltcd/btcjson"
-	"github.com/ltcsuite/ltcd/wire"
-	"github.com/ltcsuite/neutrino/blockntfns"
+	"github.com/ltcmweb/ltcd/btcjson"
+	"github.com/ltcmweb/ltcd/wire"
+	"github.com/ltcmweb/neutrino/blockntfns"
 )
 
 // createTx is a helper method to create random transactions that spend

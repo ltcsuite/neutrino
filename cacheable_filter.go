@@ -1,9 +1,9 @@
 package neutrino
 
 import (
-	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
-	"github.com/ltcsuite/ltcd/ltcutil/gcs"
-	"github.com/ltcsuite/neutrino/filterdb"
+	"github.com/ltcmweb/ltcd/chaincfg/chainhash"
+	"github.com/ltcmweb/ltcd/ltcutil/gcs"
+	"github.com/ltcmweb/neutrino/filterdb"
 )
 
 // FilterCacheKey represents the key used to access filters in the FilterCache.

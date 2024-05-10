@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
-	"github.com/ltcsuite/ltcd/wire"
+	"github.com/ltcmweb/ltcd/chaincfg/chainhash"
+	"github.com/ltcmweb/ltcd/wire"
+	"github.com/ltcmweb/neutrino/blockntfns"
 	"github.com/ltcsuite/ltcwallet/wtxmgr"
-	"github.com/ltcsuite/neutrino/blockntfns"
 )
 
 var (

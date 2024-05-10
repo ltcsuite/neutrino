@@ -3,7 +3,7 @@ package query
 import (
 	"time"
 
-	"github.com/ltcsuite/ltcd/wire"
+	"github.com/ltcmweb/ltcd/wire"
 )
 
 const (

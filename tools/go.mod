@@ -1,4 +1,4 @@
-module github.com/ltcsuite/neutrino/tools
+module github.com/ltcmweb/neutrino/tools
 
 go 1.18
 

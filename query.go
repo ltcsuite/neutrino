@@ -7,17 +7,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ltcsuite/ltcd/blockchain"
-	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
-	"github.com/ltcsuite/ltcd/ltcutil"
-	"github.com/ltcsuite/ltcd/ltcutil/gcs"
-	"github.com/ltcsuite/ltcd/ltcutil/gcs/builder"
-	"github.com/ltcsuite/ltcd/wire"
-	"github.com/ltcsuite/neutrino/banman"
-	"github.com/ltcsuite/neutrino/cache"
-	"github.com/ltcsuite/neutrino/filterdb"
-	"github.com/ltcsuite/neutrino/pushtx"
-	"github.com/ltcsuite/neutrino/query"
+	"github.com/ltcmweb/ltcd/blockchain"
+	"github.com/ltcmweb/ltcd/chaincfg/chainhash"
+	"github.com/ltcmweb/ltcd/ltcutil"
+	"github.com/ltcmweb/ltcd/ltcutil/gcs"
+	"github.com/ltcmweb/ltcd/ltcutil/gcs/builder"
+	"github.com/ltcmweb/ltcd/wire"
+	"github.com/ltcmweb/neutrino/banman"
+	"github.com/ltcmweb/neutrino/cache"
+	"github.com/ltcmweb/neutrino/filterdb"
+	"github.com/ltcmweb/neutrino/pushtx"
+	"github.com/ltcmweb/neutrino/query"
 )
 
 var (

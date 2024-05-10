@@ -10,15 +10,15 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/ltcsuite/ltcd/chaincfg"
-	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
-	"github.com/ltcsuite/ltcd/ltcutil"
-	"github.com/ltcsuite/ltcd/ltcutil/gcs"
-	"github.com/ltcsuite/ltcd/ltcutil/gcs/builder"
-	"github.com/ltcsuite/ltcd/rpcclient"
-	"github.com/ltcsuite/ltcd/wire"
-	"github.com/ltcsuite/neutrino/blockntfns"
-	"github.com/ltcsuite/neutrino/headerfs"
+	"github.com/ltcmweb/ltcd/chaincfg"
+	"github.com/ltcmweb/ltcd/chaincfg/chainhash"
+	"github.com/ltcmweb/ltcd/ltcutil"
+	"github.com/ltcmweb/ltcd/ltcutil/gcs"
+	"github.com/ltcmweb/ltcd/ltcutil/gcs/builder"
+	"github.com/ltcmweb/ltcd/rpcclient"
+	"github.com/ltcmweb/ltcd/wire"
+	"github.com/ltcmweb/neutrino/blockntfns"
+	"github.com/ltcmweb/neutrino/headerfs"
 )
 
 // mockChainSource is a mock implementation of the ChainSource interface that

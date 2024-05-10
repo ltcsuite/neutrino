@@ -9,7 +9,7 @@ package neutrino
 // dependencies here and pin the version in go.mod.
 import (
 	_ "github.com/golangci/golangci-lint/cmd/golangci-lint"
-	_ "github.com/ltcsuite/ltcd"
+	_ "github.com/ltcmweb/ltcd"
 	_ "github.com/ory/go-acc"
 	_ "github.com/rinchsan/gosimports/cmd/gosimports"
 )
