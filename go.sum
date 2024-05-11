@@ -60,8 +60,8 @@ github.com/ltcmweb/ltcd/chaincfg/chainhash v1.0.3 h1:CAPyzHI3bCFRrrVHZkDUR2i3Awj
 github.com/ltcmweb/ltcd/chaincfg/chainhash v1.0.3/go.mod h1:zB+HhI2IbIwTGpdAhdzpm1GVX4ShcWTgN42+ar9HXrg=
 github.com/ltcmweb/ltcd/ltcutil v1.2.2 h1:GQI4bdMwgrMz8ClO2cOPSNs80E6I0ixTSk9DgA3dyxU=
 github.com/ltcmweb/ltcd/ltcutil v1.2.2/go.mod h1:ezd8H9vagau9j+/STipVxok78u01b7xlj2ImrFbGhkQ=
-github.com/ltcmweb/neutrino/cache v0.0.0-20240510123324-73f2c1a1cbfd h1:d2q/We71MeLWqZa7S5GmWMIsHrsAhFJySGSGKNUuE+U=
-github.com/ltcmweb/neutrino/cache v0.0.0-20240510123324-73f2c1a1cbfd/go.mod h1:HddBIjnWaEvrDSnpMIBKkxCJaoRMlg2DfVdNFM0y+ME=
+github.com/ltcmweb/neutrino/cache v1.1.0 h1:C0Qn2p8ogcskRPfrBKPUayjn3m/CUJqI7otopNScvhk=
+github.com/ltcmweb/neutrino/cache v1.1.0/go.mod h1:HddBIjnWaEvrDSnpMIBKkxCJaoRMlg2DfVdNFM0y+ME=
 github.com/ltcsuite/lnd/clock v0.0.0-20200822020009-1a001cbb895a/go.mod h1:d474AXivZyx25TMDB2tjjiQNuPrybFcgz+yl7vQgFTs=
 github.com/ltcsuite/lnd/queue v1.0.3/go.mod h1:L0MMGRrsJFPHhTInek8YgW2v7NyB6pXrAh6Bbg2D7u8=
 github.com/ltcsuite/lnd/queue v1.1.0 h1:/aVgox4Lz74xBU8BSw5HDau7hHl2irJs5M9u1SPQ2E0=
