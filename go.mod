@@ -3,10 +3,10 @@ module github.com/ltcmweb/neutrino
 require (
 	github.com/btcsuite/btclog v0.0.0-20170628155309-84c8d2346e9f
 	github.com/davecgh/go-spew v1.1.1
-	github.com/ltcmweb/ltcd v0.24.2
+	github.com/ltcmweb/ltcd v0.24.3
 	github.com/ltcmweb/ltcd/btcec/v2 v2.3.3
 	github.com/ltcmweb/ltcd/chaincfg/chainhash v1.0.3
-	github.com/ltcmweb/ltcd/ltcutil v1.2.2
+	github.com/ltcmweb/ltcd/ltcutil v1.2.3
 	github.com/ltcmweb/neutrino/cache v1.1.0
 	github.com/ltcsuite/lnd/queue v1.1.0
 	github.com/ltcsuite/ltcwallet v0.13.1
@@ -24,6 +24,7 @@ require (
 	github.com/decred/dcrd/lru v1.1.1 // indirect
 	github.com/kkdai/bstream v1.0.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
+	github.com/ltcmweb/secp256k1 v0.1.0 // indirect
 	github.com/ltcsuite/lnd/ticker v1.0.1 // indirect
 	github.com/ltcsuite/ltcd v0.22.0-beta // indirect
 	github.com/ltcsuite/ltcd/btcec/v2 v2.1.0 // indirect

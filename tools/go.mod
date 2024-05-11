@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/golangci/golangci-lint v1.52.2
-	github.com/ltcmweb/ltcd v0.24.2
+	github.com/ltcmweb/ltcd v0.24.3
 	github.com/ory/go-acc v0.2.8
 	github.com/rinchsan/gosimports v0.1.5
 )
@@ -110,7 +110,8 @@ require (
 	github.com/leonklingele/grouper v1.1.1 // indirect
 	github.com/ltcmweb/ltcd/btcec/v2 v2.3.3 // indirect
 	github.com/ltcmweb/ltcd/chaincfg/chainhash v1.0.3 // indirect
-	github.com/ltcmweb/ltcd/ltcutil v1.2.2 // indirect
+	github.com/ltcmweb/ltcd/ltcutil v1.2.3 // indirect
+	github.com/ltcmweb/secp256k1 v0.1.0 // indirect
 	github.com/lufeee/execinquery v1.2.1 // indirect
 	github.com/magiconair/properties v1.8.6 // indirect
 	github.com/maratori/testableexamples v1.0.0 // indirect
