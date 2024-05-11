@@ -9,7 +9,6 @@ import (
 	"github.com/ltcmweb/ltcd/chaincfg/chainhash"
 	"github.com/ltcmweb/ltcd/wire"
 	"github.com/ltcmweb/neutrino/blockntfns"
-	"github.com/ltcsuite/ltcwallet/wtxmgr"
 )
 
 var (
@@ -235,7 +234,7 @@ func (b *Broadcaster) rebroadcast(txs map[chainhash.Hash]*wire.MsgTx,
 
 	log.Debugf("Re-broadcasting %d transactions", len(txs))
 
-	sortedTxs := wtxmgr.DependencySort(txs)
+	sortedTxs := DependencySort(txs)
 	for _, tx := range sortedTxs {
 		// Before attempting to broadcast this transaction, we check
 		// whether we are shutting down.

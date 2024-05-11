@@ -1,7 +1,7 @@
-PKG := github.com/ltcsuite/neutrino
+PKG := github.com/ltcmweb/neutrino
 TOOLS_DIR := tools
 
-LTCD_PKG := github.com/ltcsuite/ltcd
+LTCD_PKG := github.com/ltcmweb/ltcd
 LINT_PKG := github.com/golangci/golangci-lint/cmd/golangci-lint
 GOACC_PKG := github.com/ory/go-acc
 GOIMPORTS_PKG := github.com/rinchsan/gosimports/cmd/gosimports
