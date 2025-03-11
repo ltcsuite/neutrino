@@ -19,6 +19,7 @@ import (
 	"github.com/ltcmweb/ltcd/ltcutil/gcs"
 	"github.com/ltcmweb/ltcd/ltcutil/gcs/builder"
 	"github.com/ltcmweb/ltcd/ltcutil/mweb"
+	"github.com/ltcmweb/ltcd/ltcutil/scrypt"
 	"github.com/ltcmweb/ltcd/wire"
 	"github.com/ltcmweb/neutrino/banman"
 	"github.com/ltcmweb/neutrino/blockntfns"
@@ -2464,6 +2465,22 @@ func (b *blockManager) handleHeadersMsg(hmsg *headersMsg) {
 		hmsg.peer.Disconnect()
 		return
 	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(msg.Headers))
+	hashes := make([]scrypt.Hash, len(msg.Headers))
+	for i, blockHeader := range msg.Headers {
+		i, blockHeader := i, blockHeader
+		go func() {
+			var buf bytes.Buffer
+			blockHeader.BtcEncode(&buf, 0, 0)
+			hashes[i].Key = buf.Bytes()
+			hashes[i].Val = scrypt.Scrypt(buf.Bytes())
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	scrypt.SetCache(hashes)
 
 	// Process all of the received headers ensuring each one connects to
 	// the previous and that checkpoints match.

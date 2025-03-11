@@ -3,7 +3,7 @@ module github.com/ltcmweb/neutrino
 require (
 	github.com/btcsuite/btclog v0.0.0-20170628155309-84c8d2346e9f
 	github.com/davecgh/go-spew v1.1.1
-	github.com/ltcmweb/ltcd v0.25.0
+	github.com/ltcmweb/ltcd v0.25.6
 	github.com/ltcmweb/ltcd/btcec/v2 v2.3.3
 	github.com/ltcmweb/ltcd/chaincfg/chainhash v1.0.3
 	github.com/ltcmweb/neutrino/cache v1.1.0
