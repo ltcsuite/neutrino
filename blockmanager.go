@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/alitto/pond/v2"
 	"github.com/ltcsuite/ltcd/blockchain"
 	"github.com/ltcsuite/ltcd/chaincfg"
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
@@ -2466,20 +2468,19 @@ func (b *blockManager) handleHeadersMsg(hmsg *headersMsg) {
 		return
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(len(msg.Headers))
-	hashes := make([]scrypt.Hash, len(msg.Headers))
-	for i, blockHeader := range msg.Headers {
-		i, blockHeader := i, blockHeader
-		go func() {
+	pool := pond.NewResultPool[scrypt.Hash](runtime.NumCPU() * 2)
+	poolGroup := pool.NewGroup()
+	for _, blockHeader := range msg.Headers {
+		blockHeader := blockHeader
+		poolGroup.Submit(func() (hash scrypt.Hash) {
 			var buf bytes.Buffer
 			blockHeader.BtcEncode(&buf, 0, 0)
-			hashes[i].Key = buf.Bytes()
-			hashes[i].Val = scrypt.Scrypt(buf.Bytes())
-			wg.Done()
-		}()
+			hash.Key = buf.Bytes()
+			hash.Val = scrypt.Scrypt(hash.Key)
+			return
+		})
 	}
-	wg.Wait()
+	hashes, _ := poolGroup.Wait()
 	scrypt.SetCache(hashes)
 
 	// Process all of the received headers ensuring each one connects to
