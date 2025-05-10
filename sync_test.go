@@ -25,6 +25,7 @@ import (
 	"github.com/ltcsuite/ltcd/rpcclient"
 	"github.com/ltcsuite/ltcd/txscript"
 	"github.com/ltcsuite/ltcd/wire"
+	"github.com/ltcsuite/ltcwallet/waddrmgr"
 	"github.com/ltcsuite/ltcwallet/wallet/txauthor"
 	"github.com/ltcsuite/ltcwallet/walletdb"
 	_ "github.com/ltcsuite/ltcwallet/walletdb/bdb"
@@ -240,6 +241,10 @@ func (s *secSource) GetScript(addr ltcutil.Address) ([]byte, error) {
 	return *script, nil
 }
 
+func (s *secSource) GetScanKey(ltcutil.Address) (*btcec.PrivateKey, error) {
+	return nil, nil
+}
+
 // ChainParams is required by the SecretsSource interface.
 func (s *secSource) ChainParams() *chaincfg.Params {
 	return s.params
@@ -443,7 +448,8 @@ func testStartRescan(harness *neutrinoHarness, t *testing.T) {
 	// Spend the outputs we sent ourselves over two blocks.
 	inSrc := func(tx wire.MsgTx) func(target ltcutil.Amount) (
 		total ltcutil.Amount, inputs []*wire.TxIn,
-		inputValues []ltcutil.Amount, scripts [][]byte, err error) {
+		inputValues []ltcutil.Amount, scripts [][]byte,
+		mwebOutputs []*wire.MwebOutput, err error) {
 
 		ourIndex := 1 << 30 // Should work on 32-bit systems
 		for i, txo := range tx.TxOut {
@@ -455,12 +461,12 @@ func testStartRescan(harness *neutrinoHarness, t *testing.T) {
 		}
 		return func(target ltcutil.Amount) (ltcutil.Amount,
 			[]*wire.TxIn, []ltcutil.Amount,
-			[][]byte, error) {
+			[][]byte, []*wire.MwebOutput, error) {
 
 			if ourIndex == 1<<30 {
 				err = fmt.Errorf("Couldn't find our address " +
 					"in the passed transaction's outputs.")
-				return 0, nil, nil, nil, err
+				return 0, nil, nil, nil, nil, err
 			}
 			total := target
 			inputs := []*wire.TxIn{
@@ -476,7 +482,7 @@ func testStartRescan(harness *neutrinoHarness, t *testing.T) {
 			}
 			scripts := [][]byte{tx.TxOut[ourIndex].PkScript}
 
-			return total, inputs, inputValues, scripts, nil
+			return total, inputs, inputValues, scripts, nil, nil
 		}
 	}
 
@@ -531,7 +537,7 @@ func testStartRescan(harness *neutrinoHarness, t *testing.T) {
 		1024000,
 		inSrc(*tx1),
 		&txauthor.ChangeSource{
-			NewScript: func() ([]byte, error) {
+			NewScript: func(*waddrmgr.KeyScope) ([]byte, error) {
 				return script3, nil
 			},
 			ScriptSize: len(script3),
@@ -579,7 +585,7 @@ func testStartRescan(harness *neutrinoHarness, t *testing.T) {
 		1024000,
 		inSrc(*tx2),
 		&txauthor.ChangeSource{
-			NewScript: func() ([]byte, error) {
+			NewScript: func(*waddrmgr.KeyScope) ([]byte, error) {
 				return script3, nil
 			},
 			ScriptSize: len(script3),

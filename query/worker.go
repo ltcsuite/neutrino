@@ -26,6 +26,8 @@ var (
 type queryJob struct {
 	tries      uint8
 	index      uint64
+	batch      uint64
+	reset      bool
 	timeout    time.Duration
 	encoding   wire.MessageEncoding
 	cancelChan <-chan struct{}

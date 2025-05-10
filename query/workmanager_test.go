@@ -47,13 +47,13 @@ var _ PeerRanking = (*mockPeerRanking)(nil)
 func (p *mockPeerRanking) AddPeer(peer string) {
 }
 
-func (p *mockPeerRanking) Order(peers []string) {
+func (p *mockPeerRanking) Order(peers []Peer) {
 	if p.less == nil {
 		return
 	}
 
 	sort.Slice(peers, func(i, j int) bool {
-		return p.less(peers[i], peers[j])
+		return p.less(peers[i].Addr(), peers[j].Addr())
 	})
 }
 

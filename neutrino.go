@@ -19,6 +19,7 @@ import (
 	"github.com/ltcsuite/ltcd/chaincfg/chainhash"
 	"github.com/ltcsuite/ltcd/connmgr"
 	"github.com/ltcsuite/ltcd/ltcutil"
+	"github.com/ltcsuite/ltcd/ltcutil/mweb"
 	"github.com/ltcsuite/ltcd/peer"
 	"github.com/ltcsuite/ltcd/wire"
 	"github.com/ltcsuite/ltcwallet/walletdb"
@@ -28,6 +29,7 @@ import (
 	"github.com/ltcsuite/neutrino/chanutils"
 	"github.com/ltcsuite/neutrino/filterdb"
 	"github.com/ltcsuite/neutrino/headerfs"
+	"github.com/ltcsuite/neutrino/mwebdb"
 	"github.com/ltcsuite/neutrino/pushtx"
 	"github.com/ltcsuite/neutrino/query"
 )
@@ -51,11 +53,12 @@ var (
 	UserAgentVersion = "0.12.0-beta"
 
 	// Services describes the services that are supported by the server.
-	Services = wire.SFNodeWitness | wire.SFNodeCF
+	Services = wire.SFNodeWitness | wire.SFNodeCF | wire.SFNodeMWEB
 
 	// RequiredServices describes the services that are required to be
 	// supported by outbound peers.
-	RequiredServices = wire.SFNodeNetwork | wire.SFNodeWitness | wire.SFNodeCF
+	RequiredServices = wire.SFNodeNetwork | wire.SFNodeWitness |
+		wire.SFNodeCF | wire.SFNodeMWEB | wire.SFNodeMWEBLightClient
 
 	// BanThreshold is the maximum ban score before a peer is banned.
 	BanThreshold = uint32(100)
@@ -236,10 +239,7 @@ func (sp *ServerPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) *wire.MsgRej
 	// Check to see if the peer supports the latest protocol version and
 	// service bits required to service us. If not, then we'll disconnect
 	// so we can find compatible peers.
-	peerServices := sp.Services()
-	if peerServices&wire.SFNodeWitness != wire.SFNodeWitness ||
-		peerServices&wire.SFNodeCF != wire.SFNodeCF {
-
+	if sp.Services()&RequiredServices != RequiredServices {
 		peerAddr := sp.Addr()
 		err := sp.server.BanPeer(peerAddr, banman.NoCompactFilters)
 		if err != nil {
@@ -275,15 +275,17 @@ func (sp *ServerPeer) OnInv(p *peer.Peer, msg *wire.MsgInv) {
 	newInv := wire.NewMsgInvSizeHint(uint(len(msg.InvList)))
 	for _, invVect := range msg.InvList {
 		if invVect.Type == wire.InvTypeTx {
-			log.Tracef("Ignoring tx %s in inv from %v -- "+
-				"SPV mode", invVect.Hash, sp)
-			if sp.ProtocolVersion() >= wire.BIP0037Version {
-				log.Infof("Peer %v is announcing "+
-					"transactions -- disconnecting", sp)
-				sp.Disconnect()
-				return
+			if sp.server.blocksOnly {
+				log.Tracef("Ignoring tx %s in inv from %v -- "+
+					"SPV mode", invVect.Hash, sp)
+				if sp.ProtocolVersion() >= wire.BIP0037Version {
+					log.Infof("Peer %v is announcing "+
+						"transactions -- disconnecting", sp)
+					sp.Disconnect()
+					return
+				}
+				continue
 			}
-			continue
 		}
 		err := newInv.AddInvVect(invVect)
 		if err != nil {
@@ -295,6 +297,17 @@ func (sp *ServerPeer) OnInv(p *peer.Peer, msg *wire.MsgInv) {
 	if len(newInv.InvList) > 0 {
 		sp.server.blockManager.QueueInv(newInv, sp)
 	}
+}
+
+// OnTx is invoked when a peer sends us a new transaction. We will pass it
+// into the blockmanager for further processing.
+func (sp *ServerPeer) OnTx(p *peer.Peer, msg *wire.MsgTx) {
+	if sp.server.blocksOnly {
+		log.Tracef("Ignoring tx %v from %v - blocksonly enabled",
+			msg.TxHash(), sp)
+		return
+	}
+	sp.server.blockManager.QueueTx(ltcutil.NewTx(msg), sp)
 }
 
 // OnHeaders is invoked when a peer receives a headers bitcoin
@@ -618,6 +631,13 @@ type Config struct {
 	//    not, replies with a getdata message.
 	// 3. Neutrino sends the raw transaction.
 	BroadcastTimeout time.Duration
+
+	// BlocksOnly sets whether or not to download unconfirmed transactions
+	// off the wire. If false the ChainService will send notifications when an
+	// unconfirmed transaction matches a watching address. The trade-off here is
+	// you're going to use a lot more bandwidth but it may be acceptable for apps
+	// which only run for brief periods of time.
+	BlocksOnly bool
 }
 
 // peerSubscription holds a peer subscription which we'll notify about any
@@ -639,6 +659,7 @@ type ChainService struct { // nolint:maligned
 	FilterDB         filterdb.FilterDatabase
 	BlockHeaders     headerfs.BlockHeaderStore
 	RegFilterHeaders *headerfs.FilterHeaderStore
+	MwebCoinDB       mwebdb.CoinDatabase
 	persistToDisk    bool
 
 	FilterCache *lru.Cache[FilterCacheKey, *CacheableFilter]
@@ -678,6 +699,10 @@ type ChainService struct { // nolint:maligned
 	dialer       func(net.Addr) (net.Conn, error)
 
 	broadcastTimeout time.Duration
+
+	blocksOnly bool
+
+	mempool *Mempool
 }
 
 // NewChainService returns a new chain service configured to connect to the
@@ -737,6 +762,8 @@ func NewChainService(cfg Config) (*ChainService, error) {
 		dialer:            dialer,
 		persistToDisk:     cfg.PersistToDisk,
 		broadcastTimeout:  cfg.BroadcastTimeout,
+		blocksOnly:        cfg.BlocksOnly,
+		mempool:           NewMempool(),
 	}
 	s.workManager = query.NewWorkManager(&query.Config{
 		ConnectedPeers: s.ConnectedPeers,
@@ -799,22 +826,30 @@ func NewChainService(cfg Config) (*ChainService, error) {
 		return nil, err
 	}
 
+	s.MwebCoinDB, err = mwebdb.NewCoinStore(cfg.Database)
+	if err != nil {
+		return nil, err
+	}
+
 	bm, err := newBlockManager(&blockManagerCfg{
 		ChainParams:      s.chainParams,
 		BlockHeaders:     s.BlockHeaders,
 		RegFilterHeaders: s.RegFilterHeaders,
+		MwebCoins:        s.MwebCoinDB,
 		TimeSource:       s.timeSource,
 		QueryDispatcher:  s.workManager,
 		BanPeer:          s.BanPeer,
 		GetBlock:         s.GetBlock,
 		firstPeerSignal:  s.firstPeerConnect,
 		queryAllPeers:    s.queryAllPeers,
+		mempool:          s.mempool,
 	})
 	if err != nil {
 		return nil, err
 	}
 	s.blockManager = bm
 	s.blockSubscriptionMgr = blockntfns.NewSubscriptionManager(s.blockManager)
+	s.mempool.blockManager = bm
 
 	// Only setup a function to return new addresses to connect to when not
 	// running in connect-only mode.  Private development networks are always in
@@ -992,6 +1027,20 @@ func NewChainService(cfg Config) (*ChainService, error) {
 	return &s, nil
 }
 
+func (s *ChainService) ConnectPeer(addr string) error {
+	tcpAddr, err := s.addrStringToNetAddr(addr)
+	if err != nil {
+		return fmt.Errorf("unable to lookup IP for "+
+			"%v: %v", addr, err)
+	}
+
+	s.connManager.Connect(&connmgr.ConnReq{
+		Addr:      tcpAddr,
+		Permanent: true,
+	})
+	return nil
+}
+
 // BestBlock retrieves the most recent block's height and hash where we
 // have both the header and filter header ready.
 func (s *ChainService) BestBlock() (*headerfs.BlockStamp, error) {
@@ -1131,6 +1180,44 @@ func (s *ChainService) AddBytesReceived(bytesReceived uint64) {
 func (s *ChainService) NetTotals() (uint64, uint64) {
 	return atomic.LoadUint64(&s.bytesReceived),
 		atomic.LoadUint64(&s.bytesSent)
+}
+
+// RegisterMempoolCallback registers a callback to be fired whenever a
+// new transaction is received into the mempool.
+func (s *ChainService) RegisterMempoolCallback(onRecvTx func(*ltcutil.Tx)) {
+	s.mempool.RegisterCallback(onRecvTx)
+}
+
+// NotifyMempoolReceived registers addresses to receive a callback on
+// when a transaction paying to them enters the mempool.
+func (s *ChainService) NotifyMempoolReceived(addrs []ltcutil.Address) {
+	s.mempool.NotifyReceived(addrs)
+}
+
+// RegisterMwebUtxosCallback registers a callback to be fired whenever
+// new mweb utxos are received.
+func (s *ChainService) RegisterMwebUtxosCallback(
+	onMwebUtxos func(*mweb.Leafset, []*wire.MwebNetUtxo)) {
+
+	s.blockManager.RegisterMwebUtxosCallback(onMwebUtxos)
+}
+
+// Notify of any added mweb utxos since the last snapshot indicated by
+// the leafset.
+func (s *ChainService) NotifyAddedMwebUtxos(leafset *mweb.Leafset) error {
+	return s.blockManager.notifyAddedMwebUtxos(leafset)
+}
+
+// MwebUtxoExists checks if a mweb utxo with the given output ID exists
+// in the db.
+func (s *ChainService) MwebUtxoExists(outputId *chainhash.Hash) bool {
+	if _, err := s.MwebCoinDB.FetchCoin(outputId); err != nil {
+		if err == mwebdb.ErrCoinNotFound {
+			return false
+		}
+		panic(err)
+	}
+	return true
 }
 
 // peerHandler is used to handle peer operations such as adding and removing
@@ -1475,6 +1562,12 @@ func (s *ChainService) SendTransaction(tx *wire.MsgTx) error {
 	return s.broadcaster.Broadcast(tx)
 }
 
+// MarkAsConfirmed is used to tell the broadcaster that a transaction has been
+// confirmed and that it is no longer necessary to rebroadcast this transaction.
+func (s *ChainService) MarkAsConfirmed(txHash chainhash.Hash) {
+	s.broadcaster.MarkAsConfirmed(txHash)
+}
+
 // NewPeerConfig returns the configuration for the given ServerPeer.
 func NewPeerConfig(sp *ServerPeer) *peer.Config {
 	return &peer.Config{
@@ -1489,6 +1582,7 @@ func NewPeerConfig(sp *ServerPeer) *peer.Config {
 			OnAddrV2:    sp.OnAddrV2,
 			OnRead:      sp.OnRead,
 			OnWrite:     sp.OnWrite,
+			OnTx:        sp.OnTx,
 
 			// Note: The reference client currently bans peers that send alerts
 			// not signed with its key.  We could verify against their key, but
@@ -1502,8 +1596,8 @@ func NewPeerConfig(sp *ServerPeer) *peer.Config {
 		UserAgentVersion: sp.server.userAgentVersion,
 		ChainParams:      &sp.server.chainParams,
 		Services:         sp.server.services,
-		ProtocolVersion:  wire.AddrV2Version,
-		DisableRelayTx:   true,
+		ProtocolVersion:  wire.MwebLightClientVersion,
+		DisableRelayTx:   sp.server.blocksOnly,
 	}
 }
 

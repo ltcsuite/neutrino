@@ -13,7 +13,7 @@ const (
 
 	// defaultQueryEncoding specifies the default encoding (witness or not)
 	// for `getdata` and other similar messages.
-	defaultQueryEncoding = wire.WitnessEncoding
+	defaultQueryEncoding = wire.LatestEncoding
 
 	// defaultNumRetries is the default number of times that a query job
 	// will be retried.

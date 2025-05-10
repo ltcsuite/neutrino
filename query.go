@@ -58,7 +58,7 @@ var (
 
 	// QueryEncoding specifies the default encoding (witness or not) for
 	// `getdata` and other similar messages.
-	QueryEncoding = wire.WitnessEncoding
+	QueryEncoding = wire.LatestEncoding
 
 	// ErrFilterFetchFailed is returned in case fetching a compact filter
 	// fails.
@@ -315,11 +315,11 @@ func (s *ChainService) queryAllPeers(
 
 	// Now we start a goroutine for each peer which manages the peer's
 	// message subscription.
-	peerQuits := make(map[string]chan struct{})
+	peerQuits := make(map[int32]chan struct{})
 	for _, sp := range peers {
 		sp.subscribeRecvMsg(subscription)
 		wg.Add(1)
-		peerQuits[sp.Addr()] = make(chan struct{})
+		peerQuits[sp.ID()] = make(chan struct{})
 		go func(sp *ServerPeer, peerQuit <-chan struct{}) {
 			defer wg.Done()
 
@@ -339,7 +339,7 @@ func (s *ChainService) queryAllPeers(
 				case <-timeout:
 				}
 			}
-		}(sp, peerQuits[sp.Addr()])
+		}(sp, peerQuits[sp.ID()])
 	}
 
 	// This goroutine will wait until all of the peer-query goroutines have
@@ -365,7 +365,10 @@ checkResponses:
 		select {
 		case <-queryQuit:
 			break checkResponses
+		default:
+		}
 
+		select {
 		case <-s.quit:
 			break checkResponses
 
@@ -380,10 +383,10 @@ checkResponses:
 			// stuck. This is a caveat for callers that should be
 			// fixed before exposing this function for public use.
 			select {
-			case <-peerQuits[sm.sp.Addr()]:
+			case <-peerQuits[sm.sp.ID()]:
 			default:
 				checkResponse(sm.sp, sm.msg, queryQuit,
-					peerQuits[sm.sp.Addr()])
+					peerQuits[sm.sp.ID()])
 			}
 		}
 	}
@@ -885,9 +888,13 @@ func (s *ChainService) GetBlock(blockHash chainhash.Hash,
 			return noProgress
 		}
 
+		isSegwitActive := true
+		if s.chainParams.Net == wire.MainNet {
+			isSegwitActive = block.Height() >= 1201536
+		}
 		if err := blockchain.ValidateWitnessCommitment(
 			block,
-		); err != nil {
+		); err != nil && isSegwitActive {
 			log.Warnf("Invalid block for %s received from %s: %v "+
 				"-- disconnecting peer", blockHash, peer, err)
 
@@ -1069,9 +1076,8 @@ func (s *ChainService) sendTransaction(tx *wire.MsgTx, options ...QueryOption) e
 	// error as the reliable broadcaster will take care of broadcasting this
 	// transaction upon every block connected/disconnected.
 	if len(replies) == 0 {
-		log.Debugf("No peers replied to inv message for transaction %v",
+		return fmt.Errorf("no peers replied to inv message for transaction %v",
 			txHash)
-		return nil
 	}
 
 	// firstRejectWithCode returns the first reject error that we have for
