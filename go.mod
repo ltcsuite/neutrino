@@ -8,16 +8,13 @@ require (
 	github.com/ltcsuite/ltcd v0.23.6
 	github.com/ltcsuite/ltcd/btcec/v2 v2.3.2
 	github.com/ltcsuite/ltcd/chaincfg/chainhash v1.0.2
-	github.com/ltcsuite/ltcwallet v0.13.1
-	github.com/ltcsuite/ltcwallet/wallet/txauthor v1.1.0
+	github.com/ltcsuite/ltcd/ltcutil v1.1.4
+	github.com/ltcsuite/ltcwallet v0.16.9
+	github.com/ltcsuite/ltcwallet/wallet/txauthor v1.3.2
 	github.com/ltcsuite/ltcwallet/walletdb v1.3.5
+	github.com/ltcsuite/ltcwallet/wtxmgr v1.5.0
 	github.com/ltcsuite/neutrino/cache v1.1.0
 	github.com/stretchr/testify v1.8.3
-)
-
-require (
-	github.com/ltcsuite/ltcd/ltcutil v1.1.4-0.20250505084124-c37ac1524e04
-	github.com/ltcsuite/ltcwallet/wtxmgr v1.5.0
 )
 
 require (
@@ -32,6 +29,7 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/ltcsuite/lnd/clock v0.0.0-20200822020009-1a001cbb895a // indirect
 	github.com/ltcsuite/lnd/ticker v1.0.1 // indirect
+	github.com/ltcsuite/lnd/tlv v0.0.0-20240222214433-454d35886119 // indirect
 	github.com/ltcsuite/ltcwallet/wallet/txrules v1.2.0 // indirect
 	github.com/ltcsuite/ltcwallet/wallet/txsizes v1.1.0 // indirect
 	github.com/ltcsuite/secp256k1 v0.1.1 // indirect
@@ -42,7 +40,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.2.1 // indirect
 )
-
-replace github.com/ltcsuite/neutrino/cache => ./cache
 
 go 1.18
