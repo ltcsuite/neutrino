@@ -780,7 +780,7 @@ func NewChainService(cfg Config) (*ChainService, error) {
 	if s.persistToDisk {
 		cfg := &chanutils.BatchWriterConfig[*filterdb.FilterData]{
 			QueueBufferSize:        chanutils.DefaultQueueSize,
-			MaxBatch:               1000,
+			MaxBatch:               10,
 			DBWritesTickerDuration: time.Millisecond * 500,
 			PutItems:               s.FilterDB.PutFilters,
 		}
@@ -1129,6 +1129,24 @@ func (s *ChainService) BanPeer(addr string, reason banman.Reason) error {
 			addr, err)
 	}
 	return s.banStore.BanIPNet(ipNet, reason, BanDuration)
+}
+
+// UnbanPeer connects and unbans a previously banned peer.
+func (s *ChainService) UnbanPeer(addr string, parmanent bool) error {
+	log.Infof("UnBanning peer %v", addr)
+
+	ipNet, err := banman.ParseIPNet(addr, nil)
+	if err != nil {
+		return fmt.Errorf("unable to parse IP network for peer %v: %v",
+			addr, err)
+	}
+
+	err = s.banStore.UnbanIPNet(ipNet)
+	if err != nil {
+		return fmt.Errorf("unable to unban peer: %v", err)
+	}
+
+	return s.ConnectNode(addr, parmanent)
 }
 
 // IsBanned returns true if the peer is banned, and false otherwise.
@@ -1527,7 +1545,7 @@ func (s *ChainService) handleDonePeerMsg(state *peerState, sp *ServerPeer) {
 	}
 }
 
-// disconnectPeer attempts to drop the connection of a tageted peer in the
+// disconnectPeer attempts to drop the connection of a targeted peer in the
 // passed peer list. Targets are identified via usage of the passed
 // `compareFunc`, which should return `true` if the passed peer is the target
 // peer. This function returns true on success and false if the peer is unable
@@ -1652,7 +1670,7 @@ func (s *ChainService) outboundPeerConnected(c *connmgr.ConnReq, conn net.Conn) 
 	go s.peerDoneHandler(sp)
 }
 
-// peerDoneHandler handles peer disconnects by notifiying the server that it's
+// peerDoneHandler handles peer disconnects by notifying the server that it's
 // done along with other performing other desirable cleanup.
 func (s *ChainService) peerDoneHandler(sp *ServerPeer) {
 	sp.WaitForDisconnect()

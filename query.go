@@ -49,7 +49,7 @@ var (
 	// each peer before we've concluded we aren't going to get a valid
 	// response. This allows to make up for missed messages in some
 	// instances.
-	QueryNumRetries = 2
+	QueryNumRetries = 8
 
 	// QueryPeerConnectTimeout specifies how long to wait for the
 	// underlying chain service to connect to a peer before giving up
@@ -565,7 +565,7 @@ func (q *cfiltersQuery) handleResponse(req, resp wire.Message,
 }
 
 // prepareCFiltersQuery creates a cfiltersQuery that can be used to fetch a
-// CFilter fo the given block hash.
+// CFilter for the given block hash.
 func (s *ChainService) prepareCFiltersQuery(blockHash chainhash.Hash,
 	filterType wire.FilterType, batchType optimisticBatchType,
 	maxBatchSize int64) (*cfiltersQuery, error) {

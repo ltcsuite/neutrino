@@ -129,7 +129,7 @@ func startWorkManager(t *testing.T, numWorkers int) (WorkManager,
 func TestWorkManagerWorkDispatcherSingleWorker(t *testing.T) {
 	const numQueries = 100
 
-	// Start work manager with a sinlge worker.
+	// Start work manager with a single worker.
 	wm, workers := startWorkManager(t, 1)
 
 	// Schedule a batch of queries.
@@ -208,7 +208,7 @@ func TestWorkManagerWorkDispatcherFailures(t *testing.T) {
 		scheduledJobs[i] = make(chan sched)
 	}
 
-	// Fot each worker, spin up a goroutine that will forward the job it
+	// For each worker, spin up a goroutine that will forward the job it
 	// got to our slice of scheduled jobs, such that we can handle them in
 	// order.
 	for i := 0; i < len(workers); i++ {

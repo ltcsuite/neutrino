@@ -92,7 +92,7 @@ func (p *peerRanking) Reward(peer string) {
 	p.rank[peer] = score - 1
 }
 
-// ResetRanking resets the ranking of a peer back to the default score.
+// ResetRanking sets the score of the passed peer to the defaultScore.
 func (p *peerRanking) ResetRanking(peer string) {
 	_, ok := p.rank[peer]
 	if !ok {

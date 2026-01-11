@@ -65,11 +65,11 @@ type PeerRanking interface {
 	// queries.
 	Punish(peer string)
 
-	// ResetRanking resets the ranking of a peer back to the default.
-	ResetRanking(peer string)
-
-	// Order sorst the slice of peers according to their ranking.
+	// Order sorts the slice of peers according to their ranking.
 	Order(peers []Peer)
+
+	// ResetRanking sets the score of the passed peer to the defaultScore.
+	ResetRanking(peerAddr string)
 }
 
 // activeWorker wraps a Worker that is currently running, together with the job
