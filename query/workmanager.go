@@ -65,6 +65,9 @@ type PeerRanking interface {
 	// queries.
 	Punish(peer string)
 
+	// ResetRanking resets the ranking of a peer back to the default.
+	ResetRanking(peer string)
+
 	// Order sorst the slice of peers according to their ranking.
 	Order(peers []Peer)
 }
