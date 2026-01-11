@@ -3279,3 +3279,76 @@ func (b *blockManager) RegisterMwebUtxosCallback(
 	defer b.mwebUtxosCallbacksMtx.Unlock()
 	b.mwebUtxosCallbacks = append(b.mwebUtxosCallbacks, onMwebUtxos)
 }
+
+// notifyAddedMwebUtxos notifies of any added mweb utxos since the last
+// snapshot indicated by the leafset.
+func (b *blockManager) notifyAddedMwebUtxos(oldLeafset *mweb.Leafset) error {
+	b.mwebUtxosCallbacksMtx.Lock()
+	defer b.mwebUtxosCallbacksMtx.Unlock()
+
+	for {
+		rollbackHeight, err := b.cfg.MwebCoins.GetRollbackHeight()
+		if err != nil {
+			return err
+		} else if rollbackHeight == 0 {
+			break
+		}
+
+		b.mwebRollbackSignal.Wait()
+
+		select {
+		case <-b.quit:
+			return ErrShuttingDown
+		default:
+		}
+	}
+
+	newLeafset, err := b.cfg.MwebCoins.GetLeafset()
+	if err != nil {
+		return err
+	}
+
+	// Skip over common prefix
+	var index uint64
+	for index < uint64(len(oldLeafset.Bits)) &&
+		index < uint64(len(newLeafset.Bits)) &&
+		oldLeafset.Bits[index] == newLeafset.Bits[index] {
+		index++
+	}
+
+	var addedLeaves []uint64
+	for index *= 8; index < newLeafset.Size; index++ {
+		if !oldLeafset.Contains(index) && newLeafset.Contains(index) {
+			addedLeaves = append(addedLeaves, index)
+		}
+	}
+
+	utxos, err := b.cfg.MwebCoins.FetchLeaves(addedLeaves)
+	if err != nil {
+		return err
+	}
+
+	for _, cb := range b.mwebUtxosCallbacks {
+		cb(newLeafset, utxos)
+	}
+
+	return nil
+}
+
+// notifyMwebUtxos notifies registered callbacks of new MWEB outputs,
+// typically from mempool transactions.
+func (b *blockManager) notifyMwebUtxos(outputs []*wire.MwebOutput) {
+	b.mwebUtxosCallbacksMtx.Lock()
+	defer b.mwebUtxosCallbacksMtx.Unlock()
+
+	var utxos []*wire.MwebNetUtxo
+	for _, output := range outputs {
+		utxos = append(utxos, &wire.MwebNetUtxo{
+			Output:   output,
+			OutputId: output.Hash(),
+		})
+	}
+	for _, cb := range b.mwebUtxosCallbacks {
+		cb(nil, utxos)
+	}
+}
