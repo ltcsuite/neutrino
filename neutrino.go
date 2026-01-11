@@ -842,6 +842,7 @@ func NewChainService(cfg Config) (*ChainService, error) {
 		GetBlock:         s.GetBlock,
 		firstPeerSignal:  s.firstPeerConnect,
 		queryAllPeers:    s.queryAllPeers,
+		ConnectedPeers:   s.ConnectedPeers,
 		mempool:          s.mempool,
 	})
 	if err != nil {

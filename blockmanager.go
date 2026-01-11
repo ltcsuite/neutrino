@@ -23,6 +23,8 @@ import (
 	"github.com/ltcsuite/ltcd/ltcutil/mweb"
 	"github.com/ltcsuite/ltcd/ltcutil/scrypt"
 	"github.com/ltcsuite/ltcd/wire"
+	"github.com/ltcsuite/mwebsync"
+	"github.com/ltcsuite/mwebsync/neutrinoadapter"
 	"github.com/ltcsuite/neutrino/banman"
 	"github.com/ltcsuite/neutrino/blockntfns"
 	"github.com/ltcsuite/neutrino/chainsync"
@@ -124,6 +126,9 @@ type blockManagerCfg struct {
 		checkResponse func(sp *ServerPeer, resp wire.Message,
 			quit chan<- struct{}, peerQuit chan<- struct{}),
 		options ...QueryOption)
+
+	// ConnectedPeers returns a channel of connected peers
+	ConnectedPeers func() (<-chan query.Peer, func(), error)
 
 	mempool *Mempool
 }
@@ -229,6 +234,14 @@ type blockManager struct { // nolint:maligned
 	mwebUtxosCallbacksMtx sync.Mutex
 	mwebUtxosCallbacks    []func(*mweb.Leafset, []*wire.MwebNetUtxo)
 	mwebRollbackSignal    *sync.Cond
+
+	// mwebSyncer is the mwebsync syncer that handles MWEB synchronization
+	mwebSyncer interface {
+		Start() error
+		Stop() error
+		IsSynced() bool
+		CurrentHeight() uint32
+	}
 }
 
 // newBlockManager returns a new bitcoin block manager.  Use Start to begin
@@ -331,8 +344,8 @@ func (b *blockManager) Start() {
 			return
 		}
 
-		log.Debug("Peer connected, starting cfHandler.")
-		go b.mwebHandler()
+		log.Debug("Peer connected, starting cfHandler and mwebSync.")
+		go b.startMwebSync()
 		b.cfHandler()
 	}()
 }
@@ -372,6 +385,112 @@ func (b *blockManager) Stop() error {
 
 	close(done)
 	return nil
+}
+
+// startMwebSync initializes and starts the mwebsync syncer.
+// This replaces the old mwebHandler() function with mwebsync library.
+func (b *blockManager) startMwebSync() {
+	defer b.wg.Done()
+
+	// Create adapter for block headers
+	headerProvider := neutrinoadapter.NewHeaderProvider(b.cfg.BlockHeaders)
+
+	// Create adapter for peer provider
+	// We need to wrap queryAllPeers to convert *ServerPeer to query.Peer
+	queryAllPeersFn := func(
+		queryMsg wire.Message,
+		checkResponse func(sp query.Peer, resp wire.Message,
+			quit chan<- struct{}, peerQuit chan<- struct{}),
+	) {
+		b.cfg.queryAllPeers(
+			queryMsg,
+			func(sp *ServerPeer, resp wire.Message,
+				quit chan<- struct{}, peerQuit chan<- struct{}) {
+				// ServerPeer implements query.Peer, so we can pass it directly
+				checkResponse(sp, resp, quit, peerQuit)
+			},
+		)
+	}
+
+	// Create peer provider using ConnectedPeers from config
+	peerProvider := neutrinoadapter.NewPeerProvider(
+		b.cfg.ConnectedPeers,
+		queryAllPeersFn,
+		b.cfg.BanPeer,
+	)
+
+	// Create adapter for sync notifier
+	waitForHeadersSync := func() error {
+		b.newHeadersSignal.L.Lock()
+		defer b.newHeadersSignal.L.Unlock()
+
+		for !b.BlockHeadersSynced() {
+			b.newHeadersSignal.Wait()
+
+			select {
+			case <-b.quit:
+				return fmt.Errorf("shutting down")
+			default:
+			}
+		}
+		return nil
+	}
+
+	getHeaderTip := func() uint32 {
+		b.newHeadersMtx.RLock()
+		defer b.newHeadersMtx.RUnlock()
+		return b.headerTip
+	}
+
+	syncNotifier := neutrinoadapter.NewSyncNotifier(
+		waitForHeadersSync,
+		getHeaderTip,
+	)
+
+	// Create logger adapter
+	mwebLogger := neutrinoadapter.NewLogger(log)
+
+	// Create mwebsync configuration
+	mwebCfg := &mwebsync.Config{
+		HeaderProvider:  headerProvider,
+		QueryDispatcher: b.cfg.QueryDispatcher,
+		PeerProvider:    peerProvider,
+		SyncNotifier:    syncNotifier,
+		CoinDatabase:    b.cfg.MwebCoins,
+		ChainParams:     &b.cfg.ChainParams,
+		Logger:          mwebLogger,
+		OnUtxosAdded: func(leafset *mweb.Leafset, utxos []*wire.MwebNetUtxo) {
+			// Forward to existing neutrino callbacks
+			b.mwebUtxosCallbacksMtx.Lock()
+			defer b.mwebUtxosCallbacksMtx.Unlock()
+			for _, cb := range b.mwebUtxosCallbacks {
+				cb(leafset, utxos)
+			}
+		},
+	}
+
+	// Create and start the syncer
+	syncer, err := mwebsync.New(mwebCfg)
+	if err != nil {
+		log.Errorf("Failed to create mwebsync: %v", err)
+		return
+	}
+
+	b.mwebSyncer = syncer
+
+	if err := syncer.Start(); err != nil {
+		log.Errorf("Failed to start mwebsync: %v", err)
+		return
+	}
+
+	log.Info("MwebSync started successfully")
+
+	// Wait for syncer to finish
+	<-b.quit
+	log.Info("Stopping mwebsync...")
+	if err := syncer.Stop(); err != nil {
+		log.Errorf("Failed to stop mwebsync: %v", err)
+	}
 }
 
 // NewPeer informs the block manager of a newly active peer.
