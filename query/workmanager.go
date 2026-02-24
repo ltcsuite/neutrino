@@ -97,6 +97,12 @@ type Config struct {
 	// Ranking is used to rank the connected peers when determining who to
 	// give work to.
 	Ranking PeerRanking
+
+	// OnPeerMaxRetries is an optional callback invoked when a peer
+	// exhausts all retry attempts for a query. This allows callers
+	// to disconnect or ban persistently-failing peers so the
+	// connection manager can find alternatives.
+	OnPeerMaxRetries func(peerAddr string)
 }
 
 // peerWorkManager is the main access point for outside callers, and satisfies
@@ -372,6 +378,14 @@ Loop:
 						"rescheduling: %v",
 						result.job.index,
 						result.peer.Addr(), result.err)
+
+					// Notify the caller so it can
+					// disconnect or ban the peer.
+					if w.cfg.OnPeerMaxRetries != nil {
+						go w.cfg.OnPeerMaxRetries(
+							result.peer.Addr(),
+						)
+					}
 
 					// Return the error and cancel the
 					// batch.

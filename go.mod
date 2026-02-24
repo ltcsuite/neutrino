@@ -2,7 +2,7 @@ module github.com/ltcsuite/neutrino
 
 require (
 	github.com/alitto/pond/v2 v2.2.0
-	github.com/btcsuite/btclog v0.0.0-20170628155309-84c8d2346e9f
+	github.com/btcsuite/btclog v0.0.0-20241003133417-09c4e92e319c
 	github.com/davecgh/go-spew v1.1.1
 	github.com/ltcsuite/lnd/queue v1.1.0
 	github.com/ltcsuite/ltcd v0.23.6
